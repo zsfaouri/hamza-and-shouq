@@ -2,6 +2,17 @@
 
 Local-first campaign tool for spreadsheet-driven WhatsApp invitations, personalized templates, media attachments, RSVP links, and a clean English-primary dashboard.
 
+## Project Links
+
+```text
+GitHub: https://github.com/zsfaouri/hamza-and-shouq.git
+Vercel: https://web-zsfaouris-projects.vercel.app
+Local web: http://localhost:3000
+Local API: http://localhost:4100
+```
+
+The Vercel deployment is the frontend. Full public production use requires deploying `apps/api` to a persistent HTTPS backend and setting `NEXT_PUBLIC_API_URL` to that backend URL.
+
 ## Architecture
 
 ```text
@@ -94,4 +105,6 @@ Full build and deployment notes:
 
 ```text
 docs/PROJECT_PLAN.md
+docs/PROJECT_STATUS.md
+docs/CLAUDE_HANDOFF.md
 ```

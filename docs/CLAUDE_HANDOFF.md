@@ -6,7 +6,7 @@
 C:\Users\zaids\Desktop\hamza-and-shouq
 ```
 
-This is not the LORA website. It is a new WhatsApp invitation and RSVP campaign tool for Hamza and Shouq.
+This is a standalone WhatsApp invitation and RSVP campaign tool for Hamza and Shouq.
 
 ## What To Review
 

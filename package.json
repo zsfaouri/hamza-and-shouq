@@ -1,0 +1,18 @@
+{
+  "name": "hamza-and-shouq",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "pnpm.cmd --parallel --filter @hamza-and-shouq/api --filter @hamza-and-shouq/web dev",
+    "dev:api": "pnpm.cmd --filter @hamza-and-shouq/api dev",
+    "dev:web": "pnpm.cmd --filter @hamza-and-shouq/web dev",
+    "build": "pnpm.cmd --filter @hamza-and-shouq/api build && pnpm.cmd --filter @hamza-and-shouq/web build",
+    "lint": "pnpm.cmd --filter @hamza-and-shouq/web lint",
+    "typecheck": "pnpm.cmd --filter @hamza-and-shouq/api typecheck && pnpm.cmd --filter @hamza-and-shouq/web typecheck",
+    "prisma:generate": "pnpm.cmd --filter @hamza-and-shouq/api prisma:generate",
+    "prisma:migrate": "pnpm.cmd --filter @hamza-and-shouq/api prisma:migrate",
+    "db:push": "pnpm.cmd --filter @hamza-and-shouq/api db:push",
+    "db:seed": "pnpm.cmd --filter @hamza-and-shouq/api db:seed"
+  },
+  "packageManager": "pnpm@10.13.1"
+}

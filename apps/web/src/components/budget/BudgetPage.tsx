@@ -279,7 +279,7 @@ export function BudgetPageClient({ initialUser }: { initialUser: SessionUser }) 
                 )}
               </Fragment>
             )) : (
-              <div className="budget-empty">No expenses yet. Click "Add Expense" to get started.</div>
+              <div className="budget-empty">No expenses yet. Click Add Expense to get started.</div>
             )}
           </div>
         )}
@@ -322,7 +322,7 @@ export function BudgetPageClient({ initialUser }: { initialUser: SessionUser }) 
                 </div>
               </div>
             )) : (
-              <div className="budget-empty">No vendors yet. Click "Add Vendor" to get started.</div>
+              <div className="budget-empty">No vendors yet. Click Add Vendor to get started.</div>
             )}
           </div>
         )}

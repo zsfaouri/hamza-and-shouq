@@ -4,7 +4,12 @@ import { json, hydrateStore } from "@/lib/vercel-api-store";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const body = await request.json() as { username?: string; password?: string };
+  let body: { username?: string; password?: string };
+  try {
+    body = await request.json() as { username?: string; password?: string };
+  } catch {
+    return json({ error: "Invalid JSON body" }, { status: 400 });
+  }
   const username = String(body.username ?? "").trim().toLowerCase();
   const password = String(body.password ?? "");
   const data = await hydrateStore();

@@ -24,11 +24,11 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const body = await request.json();
   const data = await hydrateStore();
   const user = userFromRequest(request, data.accessUsers);
   if (!user) return unauthorized();
   if (!user.permissions.canManageCampaigns) return forbidden();
+  const body = await request.json();
   const templateId = String(body.templateId ?? data.templates[0]?.id ?? "");
   const campaign = {
     id: id("campaign"),

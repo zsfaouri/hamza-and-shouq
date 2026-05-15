@@ -11,11 +11,11 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const body = await request.json();
   const data = await hydrateStore();
   const user = userFromRequest(request, data.accessUsers);
   if (!user) return unauthorized();
   if (!user.permissions.canEditTemplates) return forbidden();
+  const body = await request.json();
   const template = {
     id: id("template"),
     name: String(body.name ?? "Untitled template"),

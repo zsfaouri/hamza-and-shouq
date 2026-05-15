@@ -1,5 +1,5 @@
 import https from "node:https";
-import { initPersonalWhatsApp, personalWhatsAppStatus } from "@/lib/personal-whatsapp";
+import { initPersonalWhatsApp, personalWhatsAppStatus, waitForPersonalWhatsAppQr } from "@/lib/personal-whatsapp";
 
 type Template = {
   id: string;
@@ -268,7 +268,7 @@ export async function startPersonalSession() {
   const backendUrl = settings().personalBackendUrl.trim().replace(/\/$/, "");
   if (!backendUrl) {
     await initPersonalWhatsApp();
-    return personalWhatsAppStatus();
+    return waitForPersonalWhatsAppQr();
   }
 
   const response = await fetch(`${backendUrl}/api/whatsapp/start`, { method: "POST", cache: "no-store" });

@@ -111,6 +111,23 @@ export async function personalWhatsAppStatus() {
   };
 }
 
+export async function waitForPersonalWhatsAppQr(timeoutMs = 50_000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const state = runtime();
+    if (state.qr || state.state === "ready" || state.state === "error" || state.state === "disconnected") {
+      return personalWhatsAppStatus();
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  const state = runtime();
+  if (!state.qr && state.state === "booting") {
+    state.error = "WhatsApp QR was not generated before the Vercel function timeout.";
+    state.state = "error";
+  }
+  return personalWhatsAppStatus();
+}
+
 export async function sendPersonalWhatsAppMessage(toPhone: string, body: string) {
   const state = runtime();
   if (!state.client || state.state !== "ready") throw new Error("Personal WhatsApp session is not ready");

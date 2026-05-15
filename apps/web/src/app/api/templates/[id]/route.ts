@@ -1,10 +1,10 @@
-import { json, store } from "@/lib/vercel-api-store";
+import { hydrateStore, json, persistStore } from "@/lib/vercel-api-store";
 
 export const dynamic = "force-dynamic";
 
 export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
-  const data = store();
+  const data = await hydrateStore();
   const index = data.templates.findIndex((template) => template.id === id);
   if (index === -1) return json({ error: "Template not found" }, { status: 404 });
   const body = await request.json();
@@ -16,5 +16,6 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     mediaUrl: body.mediaUrl ? String(body.mediaUrl) : null,
     mediaType: body.mediaType ? String(body.mediaType) : null,
   };
+  await persistStore();
   return json(data.templates[index]);
 }

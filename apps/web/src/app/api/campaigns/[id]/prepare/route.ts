@@ -1,10 +1,10 @@
-import { id as newId, json, renderTemplate, store } from "@/lib/vercel-api-store";
+import { hydrateStore, id as newId, json, persistStore, renderTemplate } from "@/lib/vercel-api-store";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(_request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
-  const campaign = store().campaigns.find((item) => item.id === id);
+  const campaign = (await hydrateStore()).campaigns.find((item) => item.id === id);
   if (!campaign?.template) return json({ error: "Campaign or template not found" }, { status: 404 });
   campaign.messages = campaign.contacts.map((contact) => {
     const token = newId("rsvp");
@@ -25,5 +25,6 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
     };
   });
   campaign.status = campaign.messages.length ? "READY" : "DRAFT";
+  await persistStore();
   return json({ prepared: campaign.messages.length });
 }

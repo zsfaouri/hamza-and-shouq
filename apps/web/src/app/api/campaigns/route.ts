@@ -1,9 +1,10 @@
-import { id, json, store } from "@/lib/vercel-api-store";
+import { hydrateStore, id, json, persistStore } from "@/lib/vercel-api-store";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  return json(store().campaigns.map((campaign) => ({
+  const data = await hydrateStore();
+  return json(data.campaigns.map((campaign) => ({
     id: campaign.id,
     name: campaign.name,
     status: campaign.status,
@@ -17,7 +18,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const body = await request.json();
-  const data = store();
+  const data = await hydrateStore();
   const templateId = String(body.templateId ?? data.templates[0]?.id ?? "");
   const campaign = {
     id: id("campaign"),
@@ -32,5 +33,6 @@ export async function POST(request: Request) {
     messages: [],
   };
   data.campaigns.unshift(campaign);
+  await persistStore();
   return json(campaign);
 }

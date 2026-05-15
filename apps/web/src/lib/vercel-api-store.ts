@@ -107,6 +107,62 @@ export function store() {
   return data;
 }
 
+type SupabaseRow = {
+  data?: Store;
+};
+
+function supabaseConfig() {
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  if (!url || !key) return null;
+  return { url: url.replace(/\/$/, ""), key };
+}
+
+export async function hydrateStore() {
+  const config = supabaseConfig();
+  if (!config) return store();
+
+  try {
+    const response = await fetch(`${config.url}/rest/v1/hs_app_state?id=eq.main&select=data`, {
+      headers: {
+        apikey: config.key,
+        Authorization: `Bearer ${config.key}`,
+      },
+      cache: "no-store",
+    });
+    if (!response.ok) return store();
+    const rows = await response.json() as SupabaseRow[];
+    if (rows[0]?.data) {
+      const globalWithStore = globalThis as typeof globalThis & { __hsStore?: Store };
+      globalWithStore.__hsStore = rows[0].data;
+    }
+  } catch {
+    return store();
+  }
+
+  return store();
+}
+
+export async function persistStore() {
+  const config = supabaseConfig();
+  if (!config) return;
+
+  try {
+    await fetch(`${config.url}/rest/v1/hs_app_state`, {
+      method: "POST",
+      headers: {
+        apikey: config.key,
+        Authorization: `Bearer ${config.key}`,
+        "Content-Type": "application/json",
+        Prefer: "resolution=merge-duplicates",
+      },
+      body: JSON.stringify({ id: "main", data: store() }),
+    });
+  } catch {
+    // The app remains usable with Vercel memory if Supabase is not ready.
+  }
+}
+
 export function json(data: unknown, init?: ResponseInit) {
   return Response.json(data, init);
 }

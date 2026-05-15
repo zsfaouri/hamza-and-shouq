@@ -1,9 +1,9 @@
-import { id, json, store } from "@/lib/vercel-api-store";
+import { hydrateStore, id, json, persistStore, store } from "@/lib/vercel-api-store";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  return json(store().templates);
+  return json((await hydrateStore()).templates);
 }
 
 export async function POST(request: Request) {
@@ -17,5 +17,6 @@ export async function POST(request: Request) {
     mediaType: body.mediaType ? String(body.mediaType) : null,
   };
   store().templates.unshift(template);
+  await persistStore();
   return json(template);
 }

@@ -1,15 +1,12 @@
-import { json, metaStatus } from "@/lib/vercel-api-store";
+import { json, metaStatus, personalStatus, settings, startPersonalSession } from "@/lib/vercel-api-store";
 
 export const dynamic = "force-dynamic";
 
 export async function POST() {
+  const current = settings();
   return json({
-    provider: "meta",
-    personal: {
-      state: "disabled",
-      qr: null,
-      error: "Personal QR mode is not supported on Vercel. Use Meta WhatsApp API for the Vercel deployment.",
-    },
+    provider: current.provider,
+    personal: current.provider === "personal" ? await startPersonalSession() : await personalStatus(),
     meta: metaStatus(),
   });
 }

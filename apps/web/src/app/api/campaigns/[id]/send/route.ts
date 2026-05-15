@@ -1,4 +1,4 @@
-import { json, sendMetaMessage, store } from "@/lib/vercel-api-store";
+import { json, sendMetaMessage, settings, store } from "@/lib/vercel-api-store";
 
 export const dynamic = "force-dynamic";
 
@@ -6,6 +6,11 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
   const { id } = await context.params;
   const campaign = store().campaigns.find((item) => item.id === id);
   if (!campaign) return json({ error: "Campaign not found" }, { status: 404 });
+  if (settings().provider === "personal") {
+    return json({
+      error: "Personal sending is selected. Use the Personal backend QR session for sends, or switch to Meta API for Vercel-native sends.",
+    }, { status: 400 });
+  }
   campaign.status = "SENDING";
   for (const message of campaign.messages.filter((item) => item.status === "PENDING")) {
     try {

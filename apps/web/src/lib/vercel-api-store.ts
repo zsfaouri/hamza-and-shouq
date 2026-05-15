@@ -1,3 +1,5 @@
+import https from "node:https";
+
 type Template = {
   id: string;
   name: string;
@@ -39,6 +41,12 @@ type Campaign = {
 type Store = {
   templates: Template[];
   campaigns: Campaign[];
+  settings: WhatsAppSettings;
+};
+
+export type WhatsAppSettings = {
+  provider: "personal" | "meta";
+  personalBackendUrl: string;
 };
 
 const starterTemplate: Template = {
@@ -67,9 +75,24 @@ function globalStore() {
         contacts: [],
         messages: [],
       }],
+      settings: {
+        provider: (process.env.WHATSAPP_PROVIDER === "meta" ? "meta" : "personal"),
+        personalBackendUrl: process.env.PERSONAL_WHATSAPP_API_URL ?? "",
+      },
     };
   }
   return globalWithStore.__hsStore;
+}
+
+export function settings() {
+  return store().settings;
+}
+
+export function saveSettings(input: Partial<WhatsAppSettings>) {
+  const current = settings();
+  current.provider = input.provider === "meta" ? "meta" : "personal";
+  current.personalBackendUrl = input.personalBackendUrl ?? current.personalBackendUrl;
+  return current;
 }
 
 export function store() {
@@ -219,6 +242,48 @@ export function metaStatus() {
   };
 }
 
+export async function personalStatus() {
+  const backendUrl = settings().personalBackendUrl.trim().replace(/\/$/, "");
+  if (!backendUrl) {
+    return {
+      state: "needs-backend",
+      qr: null,
+      error: "Set a persistent Personal WhatsApp backend URL to generate QR codes.",
+    };
+  }
+
+  try {
+    const response = await fetch(`${backendUrl}/api/whatsapp/status`, { cache: "no-store" });
+    if (!response.ok) throw new Error(await response.text());
+    const data = await response.json() as { personal?: unknown; state?: string; qr?: string | null; error?: string | null };
+    if (data.personal) return data.personal;
+    return { state: data.state ?? "unknown", qr: data.qr ?? null, error: data.error ?? null };
+  } catch (error) {
+    return {
+      state: "disconnected",
+      qr: null,
+      error: error instanceof Error ? error.message : "Personal WhatsApp backend is unreachable",
+    };
+  }
+}
+
+export async function startPersonalSession() {
+  const backendUrl = settings().personalBackendUrl.trim().replace(/\/$/, "");
+  if (!backendUrl) {
+    return {
+      state: "needs-backend",
+      qr: null,
+      error: "Set a persistent Personal WhatsApp backend URL to generate QR codes.",
+    };
+  }
+
+  const response = await fetch(`${backendUrl}/api/whatsapp/start`, { method: "POST", cache: "no-store" });
+  if (!response.ok) throw new Error(await response.text());
+  const data = await response.json() as { personal?: unknown; state?: string; qr?: string | null; error?: string | null };
+  if (data.personal) return data.personal;
+  return { state: data.state ?? "booting", qr: data.qr ?? null, error: data.error ?? null };
+}
+
 export async function sendMetaMessage(toPhone: string, body: string, mediaUrl?: string | null) {
   const accessToken = process.env.META_ACCESS_TOKEN;
   const phoneNumberId = process.env.META_PHONE_NUMBER_ID;
@@ -253,4 +318,3 @@ export async function sendMetaMessage(toPhone: string, body: string, mediaUrl?: 
   if (!response.ok) throw new Error(result.error?.message ?? "Meta WhatsApp API send failed");
   return result.messages?.[0]?.id ?? "";
 }
-import https from "node:https";

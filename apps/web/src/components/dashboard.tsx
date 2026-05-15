@@ -45,6 +45,11 @@ type WaStatus = {
   meta: { configured: boolean; phoneNumberId: string; graphVersion: string; sendMode: string; templateName: string };
 };
 
+type WhatsAppSettings = {
+  provider: "personal" | "meta";
+  personalBackendUrl: string;
+};
+
 const emptyStats: Stats = { sent: 0, failed: 0, pending: 0, yes: 0, no: 0 };
 
 function waBadgeClass(status: WaStatus): string {
@@ -76,6 +81,10 @@ export function Dashboard() {
     provider: "personal",
     personal: { state: "loading", qr: null, error: null },
     meta: { configured: false, phoneNumberId: "", graphVersion: "", sendMode: "text", templateName: "" },
+  });
+  const [whatsappSettings, setWhatsappSettings] = useState<WhatsAppSettings>({
+    provider: "personal",
+    personalBackendUrl: "",
   });
   const [notice, setNotice] = useState("");
   const [noticeType, setNoticeType] = useState<"success" | "error">("success");
@@ -111,9 +120,11 @@ export function Dashboard() {
         apiGet<Campaign[]>("/api/campaigns"),
         apiGet<WaStatus>("/api/whatsapp/status"),
       ]);
+      const nextSettings = await apiGet<WhatsAppSettings>("/api/settings");
       setTemplates(nextTemplates);
       setCampaigns(nextCampaigns);
       setWa(nextWa);
+      setWhatsappSettings(nextSettings);
       if (!initialized.current) {
         initialized.current = true;
         const firstId = nextCampaigns[0]?.id ?? "";
@@ -291,6 +302,20 @@ export function Dashboard() {
       showNotice("WhatsApp session starting.");
     } catch (err) {
       showNotice(err instanceof Error ? err.message : "Failed to start WhatsApp.", "error");
+    } finally { setLoading(null); }
+  }
+
+  async function saveWhatsAppSettings(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setLoading("whatsapp-settings");
+    try {
+      const saved = await apiPut<WhatsAppSettings>("/api/settings", whatsappSettings);
+      setWhatsappSettings(saved);
+      const nextWa = await apiGet<WaStatus>("/api/whatsapp/status");
+      setWa(nextWa);
+      showNotice("WhatsApp settings saved.");
+    } catch (err) {
+      showNotice(err instanceof Error ? err.message : "Failed to save WhatsApp settings.", "error");
     } finally { setLoading(null); }
   }
 
@@ -515,11 +540,47 @@ export function Dashboard() {
                   <p className="qr-hint">Open WhatsApp → Linked Devices → Link a Device, then scan this code.</p>
                 </div>
               ) : (
-                <p className="text-subtle">QR code appears here when WhatsApp needs login.</p>
+                <p className="text-subtle">{wa.personal.error ?? "QR code appears here when WhatsApp needs login."}</p>
               )}
             </div>
 
-            <div className="card">
+            <div className="card form-stack">
+              <p className="card-title">WhatsApp Settings</p>
+              <form className="form-stack" onSubmit={saveWhatsAppSettings}>
+                <Field label="Sending provider">
+                  <select
+                    className="select"
+                    value={whatsappSettings.provider}
+                    onChange={(e) => setWhatsappSettings((current) => ({
+                      ...current,
+                      provider: e.target.value === "meta" ? "meta" : "personal",
+                    }))}
+                  >
+                    <option value="personal">Personal WhatsApp QR</option>
+                    <option value="meta">Meta WhatsApp API</option>
+                  </select>
+                </Field>
+                <Field label="Personal backend URL">
+                  <input
+                    className="input"
+                    value={whatsappSettings.personalBackendUrl}
+                    onChange={(e) => setWhatsappSettings((current) => ({
+                      ...current,
+                      personalBackendUrl: e.target.value,
+                    }))}
+                    placeholder="https://your-persistent-api.example.com"
+                  />
+                </Field>
+                <div className="preview-box">
+                  <strong>Meta API</strong>
+                  <p className="text-subtle" style={{ margin: "8px 0 0" }}>
+                    {wa.meta.configured ? `Configured: ${wa.meta.phoneNumberId}` : "Not configured in Vercel environment variables."}
+                  </p>
+                </div>
+                <button className="btn btn-primary btn-full" type="submit" disabled={loading === "whatsapp-settings"}>
+                  {loading === "whatsapp-settings" ? "Saving..." : "Save WhatsApp settings"}
+                </button>
+              </form>
               <p className="card-title">Send Rules</p>
               <div className="form-stack">
                 <Rule icon="🕐" text="Sequential sending with 4s delay between messages" />

@@ -1,3 +1,4 @@
+import { parse } from "csv-parse/sync";
 import { parseCsvContacts, type ParsedContact } from "./spreadsheet.js";
 import https from "node:https";
 
@@ -50,7 +51,21 @@ function readUrlWithNodeHttps(url: string, redirects = 0): Promise<Buffer> {
   });
 }
 
-export async function readGoogleSheetContacts(input: { url?: string; sheetId?: string; gid?: string }): Promise<ParsedContact[]> {
+function googleSheetPreviewFromCsv(buffer: Buffer) {
+  const [headers = []] = parse(buffer, {
+    to_line: 1,
+    relax_column_count: true,
+    skip_empty_lines: true,
+    trim: true,
+  }) as string[][];
+
+  return {
+    headers,
+    contacts: parseCsvContacts(buffer),
+  };
+}
+
+async function readGoogleSheetCsv(input: { url?: string; sheetId?: string; gid?: string }): Promise<Buffer> {
   const url = googleSheetCsvUrl(input);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15_000);
@@ -60,11 +75,18 @@ export async function readGoogleSheetContacts(input: { url?: string; sheetId?: s
     const response = await fetch(url, { redirect: "follow", signal: controller.signal });
     if (!response.ok) throw new Error(`Google Sheet read failed: ${response.status}`);
 
-    const csv = Buffer.from(await response.arrayBuffer());
-    return parseCsvContacts(csv);
+    return Buffer.from(await response.arrayBuffer());
   } catch {
-    return parseCsvContacts(await readUrlWithNodeHttps(url));
+    return readUrlWithNodeHttps(url);
   } finally {
     clearTimeout(timeout);
   }
+}
+
+export async function readGoogleSheetPreview(input: { url?: string; sheetId?: string; gid?: string }) {
+  return googleSheetPreviewFromCsv(await readGoogleSheetCsv(input));
+}
+
+export async function readGoogleSheetContacts(input: { url?: string; sheetId?: string; gid?: string }): Promise<ParsedContact[]> {
+  return (await readGoogleSheetPreview(input)).contacts;
 }

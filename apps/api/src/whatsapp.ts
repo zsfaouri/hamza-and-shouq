@@ -67,6 +67,20 @@ export async function getWhatsAppStatus() {
   return { state, qr: qrDataUrl, error: lastError };
 }
 
+export async function waitForWhatsAppQr(timeoutMs = 50_000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const status = await getWhatsAppStatus();
+    if (status.qr || status.state === "ready" || status.state === "disconnected") return status;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  if (state === "booting") {
+    lastError = "WhatsApp QR was not generated before the request timed out.";
+    state = "disconnected";
+  }
+  return getWhatsAppStatus();
+}
+
 export async function sendWhatsAppMessage(toPhone: string, body: string, mediaUrl?: string | null) {
   if (!client || state !== "ready") throw new Error("WhatsApp session is not ready");
 

@@ -6,13 +6,13 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
 import { getPrisma } from "./db.js";
-import { readGoogleSheetContacts } from "./google-sheet.js";
+import { readGoogleSheetPreview } from "./google-sheet.js";
 import { saveMedia } from "./media.js";
 import { getMetaStatus, sendMetaWhatsAppMessage, verifyMetaSignature } from "./meta-whatsapp.js";
 import { getSettings, publicSettings, saveSettings } from "./settings.js";
 import { parseSpreadsheet } from "./spreadsheet.js";
 import { normalizePhone, renderTemplate } from "./template.js";
-import { getWhatsAppStatus, initWhatsApp, sendWhatsAppMessage } from "./whatsapp.js";
+import { getWhatsAppStatus, initWhatsApp, sendWhatsAppMessage, waitForWhatsAppQr } from "./whatsapp.js";
 
 const app = express();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
@@ -108,7 +108,7 @@ app.post("/api/whatsapp/start", async (_req, res) => {
   await initWhatsApp();
   res.json({
     provider: settings.provider,
-    personal: await getWhatsAppStatus(),
+    personal: await waitForWhatsAppQr(),
     meta: getMetaStatus(settings),
   });
 });
@@ -223,20 +223,32 @@ app.post("/api/campaigns/:id/contacts/google-sheet", async (req, res) => {
   const campaignId = routeParam(req.params.id);
   const settings = getSettings();
   const input = schema.parse(req.body);
-  const contacts = await readGoogleSheetContacts(input);
+  const preview = await readGoogleSheetPreview(input);
+  const contacts = preview.contacts.map((contact) => ({
+    ...contact,
+    phone: normalizePhone(contact.phone, settings.defaultCountryCode),
+  }));
 
   await prisma.contact.createMany({
     data: contacts.map((contact) => ({
       campaignId,
       name: contact.name,
-      phone: normalizePhone(contact.phone, settings.defaultCountryCode),
+      phone: contact.phone,
       customFields: JSON.stringify(contact.customFields),
     })),
   });
 
   const totalCount = await prisma.contact.count({ where: { campaignId } });
-  await prisma.campaign.update({ where: { id: campaignId }, data: { totalCount, status: "READY" } });
-  res.json({ imported: contacts.length, totalCount });
+  await prisma.campaign.update({ where: { id: campaignId }, data: { totalCount, status: totalCount ? "READY" : "DRAFT" } });
+  res.json({
+    imported: contacts.length,
+    totalCount,
+    headers: preview.headers,
+    contacts: contacts.map((contact, index) => ({ id: `${campaignId}-${index}`, name: contact.name, phone: contact.phone })),
+    message: contacts.length
+      ? `Read ${contacts.length} contact${contacts.length === 1 ? "" : "s"} from Google Sheets.`
+      : `Google Sheet is reachable. Headers read: ${preview.headers.join(", ") || "none"}. No contact rows found.`,
+  });
 });
 
 app.get("/api/campaigns/:id", async (req, res) => {

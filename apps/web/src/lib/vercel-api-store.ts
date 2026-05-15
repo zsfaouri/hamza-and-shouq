@@ -43,11 +43,26 @@ type Store = {
   templates: Template[];
   campaigns: Campaign[];
   settings: WhatsAppSettings;
+  personalWhatsApp: PersonalWhatsAppSnapshot;
 };
 
 export type WhatsAppSettings = {
   provider: "personal" | "meta";
   personalBackendUrl: string;
+};
+
+type PersonalWhatsAppSnapshot = {
+  state: string;
+  qr: string | null;
+  error: string | null;
+  updatedAt: string;
+  expiresAt: string;
+};
+
+type PersonalWhatsAppStatus = {
+  state: string;
+  qr: string | null;
+  error?: string | null;
 };
 
 const starterTemplate: Template = {
@@ -80,9 +95,20 @@ function globalStore() {
         provider: (process.env.WHATSAPP_PROVIDER === "meta" ? "meta" : "personal"),
         personalBackendUrl: process.env.PERSONAL_WHATSAPP_API_URL ?? "",
       },
+      personalWhatsApp: emptyPersonalWhatsAppSnapshot(),
     };
   }
   return globalWithStore.__hsStore;
+}
+
+function emptyPersonalWhatsAppSnapshot(): PersonalWhatsAppSnapshot {
+  return {
+    state: "disabled",
+    qr: null,
+    error: null,
+    updatedAt: new Date(0).toISOString(),
+    expiresAt: new Date(0).toISOString(),
+  };
 }
 
 export function settings() {
@@ -98,6 +124,7 @@ export function saveSettings(input: Partial<WhatsAppSettings>) {
 
 export function store() {
   const data = globalStore();
+  data.personalWhatsApp ??= emptyPersonalWhatsAppSnapshot();
   for (const campaign of data.campaigns) {
     campaign.template = data.templates.find((template) => template.id === campaign.templateId) ?? null;
     campaign.totalCount = campaign.contacts.length;
@@ -171,6 +198,28 @@ export function id(prefix: string) {
   return `${prefix}_${Math.random().toString(36).slice(2)}_${Date.now().toString(36)}`;
 }
 
+function cachePersonalWhatsAppStatus(status: PersonalWhatsAppStatus) {
+  const now = Date.now();
+  store().personalWhatsApp = {
+    state: status.state,
+    qr: status.qr,
+    error: status.error ?? null,
+    updatedAt: new Date(now).toISOString(),
+    expiresAt: new Date(now + 120_000).toISOString(),
+  };
+}
+
+function reusablePersonalQr(status: PersonalWhatsAppStatus) {
+  const cached = store().personalWhatsApp;
+  if (status.qr || status.state === "ready" || !cached.qr) return status;
+  if (Date.parse(cached.expiresAt) <= Date.now()) return status;
+  return {
+    state: "qr",
+    qr: cached.qr,
+    error: status.error ?? cached.error,
+  };
+}
+
 export function normalizePhone(phone: string, defaultCountryCode = "962") {
   const cleaned = phone.replace(/[^\d+]/g, "");
   if (cleaned.startsWith("+")) return cleaned.replace(/[^\d]/g, "");
@@ -202,11 +251,11 @@ function firstValue(row: Record<string, unknown>, candidates: string[]) {
   return "";
 }
 
-export function contactsFromCsv(csv: string) {
+export function googleSheetPreviewFromCsv(csv: string) {
   const [headerLine, ...lines] = csv.replace(/^\uFEFF/, "").split(/\r?\n/).filter((line) => line.trim());
-  if (!headerLine) return [];
+  if (!headerLine) return { headers: [] as string[], contacts: [] as Contact[] };
   const headers = parseCsvLine(headerLine);
-  return lines
+  const contacts = lines
     .map((line) => {
       const values = parseCsvLine(line);
       const row = Object.fromEntries(headers.map((header, index) => [header, values[index] ?? ""]));
@@ -215,6 +264,11 @@ export function contactsFromCsv(csv: string) {
       return { id: id("contact"), name, phone: normalizePhone(phone), customFields: row };
     })
     .filter((contact) => contact.name && contact.phone);
+  return { headers, contacts };
+}
+
+export function contactsFromCsv(csv: string) {
+  return googleSheetPreviewFromCsv(csv).contacts;
 }
 
 function parseCsvLine(line: string) {
@@ -248,7 +302,7 @@ function gidFromUrl(url: string) {
   return url.match(/[#?&]gid=([0-9]+)/i)?.[1] ?? "0";
 }
 
-export async function readGoogleSheetContacts(input: { url?: string; sheetId?: string; gid?: string }) {
+async function readGoogleSheetCsv(input: { url?: string; sheetId?: string; gid?: string }) {
   const sourceUrl = input.url?.trim() ?? "";
   const sheetId = input.sheetId?.trim() || sheetIdFromUrl(sourceUrl);
   const gid = input.gid?.trim() || gidFromUrl(sourceUrl);
@@ -258,10 +312,18 @@ export async function readGoogleSheetContacts(input: { url?: string; sheetId?: s
   try {
     const response = await fetch(csvUrl, { redirect: "follow", cache: "no-store" });
     if (!response.ok) throw new Error(`Google Sheet read failed: ${response.status}`);
-    return contactsFromCsv(await response.text());
+    return response.text();
   } catch {
-    return contactsFromCsv(await readUrlWithNodeHttps(csvUrl));
+    return readUrlWithNodeHttps(csvUrl);
   }
+}
+
+export async function readGoogleSheetPreview(input: { url?: string; sheetId?: string; gid?: string }) {
+  return googleSheetPreviewFromCsv(await readGoogleSheetCsv(input));
+}
+
+export async function readGoogleSheetContacts(input: { url?: string; sheetId?: string; gid?: string }) {
+  return (await readGoogleSheetPreview(input)).contacts;
 }
 
 function readUrlWithNodeHttps(url: string, redirects = 0): Promise<string> {
@@ -302,7 +364,7 @@ export function metaStatus() {
 export async function personalStatus() {
   const backendUrl = settings().personalBackendUrl.trim().replace(/\/$/, "");
   if (!backendUrl) {
-    return personalWhatsAppStatus();
+    return reusablePersonalQr(await personalWhatsAppStatus());
   }
 
   try {
@@ -324,7 +386,10 @@ export async function startPersonalSession() {
   const backendUrl = settings().personalBackendUrl.trim().replace(/\/$/, "");
   if (!backendUrl) {
     await initPersonalWhatsApp();
-    return waitForPersonalWhatsAppQr();
+    const status = await waitForPersonalWhatsAppQr();
+    cachePersonalWhatsAppStatus(status);
+    await persistStore();
+    return status;
   }
 
   const response = await fetch(`${backendUrl}/api/whatsapp/start`, { method: "POST", cache: "no-store" });

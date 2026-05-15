@@ -39,6 +39,14 @@ type CampaignDetail = Campaign & { contacts: Contact[]; messages: Message[] };
 
 type Stats = { sent: number; failed: number; pending: number; yes: number; no: number };
 
+type SheetImportResult = {
+  imported: number;
+  totalCount: number;
+  headers?: string[];
+  contacts?: Contact[];
+  message?: string;
+};
+
 type WaStatus = {
   provider: "personal" | "meta";
   personal: { state: string; qr: string | null; error?: string | null };
@@ -63,6 +71,21 @@ function waBadgeClass(status: WaStatus): string {
 function waLabel(status: WaStatus): string {
   if (status.provider === "meta") return status.meta.configured ? "Meta configured" : "Meta not configured";
   return status.personal.state;
+}
+
+function preserveQr(current: WaStatus, next: WaStatus): WaStatus {
+  if (next.provider === "personal" && current.personal.qr && !next.personal.qr && next.personal.state !== "ready") {
+    return {
+      ...next,
+      personal: {
+        ...next.personal,
+        state: current.personal.state === "qr" ? "qr" : next.personal.state,
+        qr: current.personal.qr,
+        error: next.personal.error,
+      },
+    };
+  }
+  return next;
 }
 
 function msgBadgeClass(s: string): string {
@@ -90,6 +113,7 @@ export function Dashboard() {
   const [noticeType, setNoticeType] = useState<"success" | "error">("success");
   const [loading, setLoading] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState("campaign");
+  const [sheetPreview, setSheetPreview] = useState<SheetImportResult | null>(null);
   const [sheetUrl, setSheetUrl] = useState(
     "https://docs.google.com/spreadsheets/d/1021Z6KyT-dF97FVJAG3c4Nr6thASDpuhPu-hFC_fTA0/edit?usp=sharing",
   );
@@ -123,7 +147,7 @@ export function Dashboard() {
       const nextSettings = await apiGet<WhatsAppSettings>("/api/settings");
       setTemplates(nextTemplates);
       setCampaigns(nextCampaigns);
-      setWa(nextWa);
+      setWa((current) => preserveQr(current, nextWa));
       setWhatsappSettings(nextSettings);
       if (!initialized.current) {
         initialized.current = true;
@@ -248,8 +272,9 @@ export function Dashboard() {
     if (!campaign) return;
     setLoading("google-sheet");
     try {
-      const result = await apiPost<{ imported: number }>(`/api/campaigns/${campaign.id}/contacts/google-sheet`, { url: sheetUrl });
-      showNotice(`Imported ${result.imported} contacts from Google Sheets.`);
+      const result = await apiPost<SheetImportResult>(`/api/campaigns/${campaign.id}/contacts/google-sheet`, { url: sheetUrl });
+      setSheetPreview(result);
+      showNotice(result.message ?? `Imported ${result.imported} contacts from Google Sheets.`);
       await loadCampaign(campaign.id);
     } catch (err) {
       showNotice(err instanceof Error ? err.message : "Failed to import Google Sheet.", "error");
@@ -298,8 +323,8 @@ export function Dashboard() {
     setLoading("whatsapp");
     try {
       const nextWa = await apiPost<WaStatus>("/api/whatsapp/start");
-      setWa(nextWa);
-      showNotice("WhatsApp session starting.");
+      setWa((current) => preserveQr(current, nextWa));
+      showNotice(nextWa.personal.qr ? "WhatsApp QR generated." : "WhatsApp session starting.");
     } catch (err) {
       showNotice(err instanceof Error ? err.message : "Failed to start WhatsApp.", "error");
     } finally { setLoading(null); }
@@ -520,6 +545,39 @@ export function Dashboard() {
                   {loading === "google-sheet" ? "Importing…" : "Import Google Sheet"}
                 </button>
               </form>
+              {sheetPreview ? (
+                <div className="preview-box">
+                  <strong>Google Sheet readings</strong>
+                  <p className="text-subtle" style={{ margin: "8px 0" }}>
+                    {sheetPreview.message ?? `${sheetPreview.imported} contacts read.`}
+                  </p>
+                  {sheetPreview.headers?.length ? (
+                    <p className="text-subtle" style={{ margin: "0 0 8px" }}>
+                      Headers: {sheetPreview.headers.join(", ")}
+                    </p>
+                  ) : null}
+                  {sheetPreview.contacts?.length ? (
+                    <div className="table-wrap">
+                      <table className="table">
+                        <thead>
+                          <tr>
+                            <th>Name</th>
+                            <th>Phone</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {sheetPreview.contacts.map((contact) => (
+                            <tr key={contact.id}>
+                              <td>{contact.name}</td>
+                              <td>{contact.phone}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           </section>
 

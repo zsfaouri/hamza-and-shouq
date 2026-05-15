@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
 import { getPrisma } from "./db.js";
-import { readGoogleSheetPreview } from "./google-sheet.js";
+import { detectGoogleSheetTabs, importGoogleSheetTabs, readGoogleSheetPreview } from "./google-sheet.js";
 import { saveMedia } from "./media.js";
 import { getMetaStatus, sendMetaWhatsAppMessage, verifyMetaSignature } from "./meta-whatsapp.js";
 import { getSettings, publicSettings, saveSettings } from "./settings.js";
@@ -214,42 +214,91 @@ app.post("/api/campaigns/:id/contacts", upload.single("file"), async (req, res) 
   res.json({ imported: contacts.length, totalCount });
 });
 
+// ── Detect tabs (no import) ─────────────────────────────────────────────────
+app.post("/api/campaigns/:id/contacts/google-sheet/detect", async (req, res) => {
+  const { url } = z.object({ url: z.string() }).parse(req.body);
+  const result = await detectGoogleSheetTabs(url);
+  res.json(result);
+});
+
+// ── Import selected tabs with per-tab metadata ──────────────────────────────
 app.post("/api/campaigns/:id/contacts/google-sheet", async (req, res) => {
   const schema = z.object({
-    url: z.string().url().optional(),
+    url: z.string().optional(),
     sheetId: z.string().optional(),
     gid: z.string().optional(),
+    selectedTabs: z.array(z.string()).optional(),
   });
   const campaignId = routeParam(req.params.id);
   const settings = getSettings();
   const input = schema.parse(req.body);
-  const preview = await readGoogleSheetPreview(input);
-  const contacts = preview.contacts.map((contact) => ({
-    ...contact,
-    phone: normalizePhone(contact.phone, settings.defaultCountryCode),
-  }));
+  const importBatchId = randomUUID();
+  const importedAt = new Date();
 
+  // New per-tab flow (when url is provided without a specific gid)
+  if (input.url && input.selectedTabs !== undefined) {
+    const tabs = await importGoogleSheetTabs(input.url, input.selectedTabs.length ? input.selectedTabs : undefined);
+    const tabResults: Array<{ name: string; imported: number; error?: string }> = [];
+    let totalImported = 0;
+
+    for (const tab of tabs) {
+      try {
+        await prisma.contact.createMany({
+          data: tab.contacts.map((c) => ({
+            campaignId,
+            name: c.name,
+            phone: normalizePhone(c.phone, settings.defaultCountryCode),
+            customFields: JSON.stringify(c.customFields),
+            sourceTab: tab.name,
+            listOwner: tab.name,
+            importBatchId,
+            importedAt,
+          })),
+        });
+        tabResults.push({ name: tab.name, imported: tab.contacts.length });
+        totalImported += tab.contacts.length;
+      } catch (err) {
+        tabResults.push({ name: tab.name, imported: 0, error: err instanceof Error ? err.message : "Import failed" });
+      }
+    }
+
+    const totalCount = await prisma.contact.count({ where: { campaignId } });
+    await prisma.campaign.update({ where: { id: campaignId }, data: { totalCount, status: totalCount ? "READY" : "DRAFT" } });
+    return res.json({ imported: totalImported, totalCount, importBatchId, tabs: tabResults });
+  }
+
+  // Legacy single-sheet flow
+  const preview = await readGoogleSheetPreview(input);
+  const contacts = preview.contacts.map((c) => ({ ...c, phone: normalizePhone(c.phone, settings.defaultCountryCode) }));
   await prisma.contact.createMany({
-    data: contacts.map((contact) => ({
-      campaignId,
-      name: contact.name,
-      phone: contact.phone,
-      customFields: JSON.stringify(contact.customFields),
+    data: contacts.map((c) => ({
+      campaignId, name: c.name, phone: c.phone,
+      customFields: JSON.stringify(c.customFields),
+      importBatchId, importedAt,
     })),
   });
-
   const totalCount = await prisma.contact.count({ where: { campaignId } });
   await prisma.campaign.update({ where: { id: campaignId }, data: { totalCount, status: totalCount ? "READY" : "DRAFT" } });
   res.json({
-    imported: contacts.length,
-    totalCount,
-    headers: preview.headers,
-    worksheets: preview.worksheets,
-    contacts: contacts.map((contact, index) => ({ id: `${campaignId}-${index}`, name: contact.name, phone: contact.phone })),
+    imported: contacts.length, totalCount,
+    headers: preview.headers, worksheets: preview.worksheets,
+    contacts: contacts.map((c, i) => ({ id: `${campaignId}-${i}`, name: c.name, phone: c.phone })),
     message: contacts.length
-      ? `Read ${contacts.length} contact${contacts.length === 1 ? "" : "s"} from ${preview.worksheets.length} worksheet${preview.worksheets.length === 1 ? "" : "s"}.`
-      : `Google Sheet is reachable. Read ${preview.worksheets.length} worksheet${preview.worksheets.length === 1 ? "" : "s"}, but found no rows with both name and number.`,
+      ? `Read ${contacts.length} contacts from ${preview.worksheets.length} worksheets.`
+      : `No contacts with name+phone found.`,
   });
+});
+
+// ── List distinct source tabs for a campaign ────────────────────────────────
+app.get("/api/campaigns/:id/contacts/tabs", async (req, res) => {
+  const campaignId = routeParam(req.params.id);
+  const rows = await prisma.contact.groupBy({
+    by: ["sourceTab"],
+    where: { campaignId, sourceTab: { not: null } },
+    _count: { id: true },
+    orderBy: { sourceTab: "asc" },
+  });
+  res.json(rows.map((r) => ({ name: r.sourceTab!, count: r._count.id })));
 });
 
 app.get("/api/campaigns/:id", async (req, res) => {

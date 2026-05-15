@@ -143,6 +143,62 @@ async function readGoogleSheetWorksheets(sheetId: string) {
   return parseGoogleWorksheets((await readUrlBuffer(url)).toString("utf8"));
 }
 
+export type SheetTabDetected = {
+  name: string;
+  gid: string;
+  rowCount: number;
+  contactCount: number;
+  preview: Array<{ name: string; phone: string }>;
+};
+
+export type SheetTabWithContacts = {
+  name: string;
+  gid: string;
+  contacts: ParsedContact[];
+};
+
+export async function detectGoogleSheetTabs(url: string): Promise<{ sheetId: string; tabs: SheetTabDetected[] }> {
+  const sheetId = sheetIdFromUrl(url.trim());
+  if (!sheetId) throw new Error("Invalid Google Sheets URL — could not extract sheet ID.");
+
+  const worksheets = await readGoogleSheetWorksheets(sheetId);
+  const targets = worksheets.length ? worksheets : [{ title: "Sheet 1", gid: "0" }];
+
+  const tabs = await Promise.all(targets.map(async (ws): Promise<SheetTabDetected> => {
+    const buf = await readGoogleSheetCsv(sheetId, ws.gid);
+    const { contacts, rowCount } = googleSheetPreviewFromCsv(buf, ws.title);
+    return {
+      name: ws.title,
+      gid: ws.gid,
+      rowCount,
+      contactCount: contacts.length,
+      preview: contacts.slice(0, 5).map((c) => ({ name: c.name, phone: c.phone })),
+    };
+  }));
+
+  return { sheetId, tabs };
+}
+
+export async function importGoogleSheetTabs(
+  url: string,
+  selectedTabNames?: string[],
+): Promise<SheetTabWithContacts[]> {
+  const sheetId = sheetIdFromUrl(url.trim());
+  if (!sheetId) throw new Error("Invalid Google Sheets URL.");
+
+  const worksheets = await readGoogleSheetWorksheets(sheetId);
+  const targets = worksheets.length ? worksheets : [{ title: "Sheet 1", gid: "0" }];
+  const filtered = selectedTabNames
+    ? targets.filter((ws) => selectedTabNames.includes(ws.title))
+    : targets;
+
+  return Promise.all(filtered.map(async (ws) => {
+    const buf = await readGoogleSheetCsv(sheetId, ws.gid);
+    const { contacts } = googleSheetPreviewFromCsv(buf, ws.title);
+    return { name: ws.title, gid: ws.gid, contacts };
+  }));
+}
+
 export async function readGoogleSheetPreview(input: { url?: string; sheetId?: string; gid?: string }) {
   const sourceUrl = input.url?.trim() ?? "";
   const sheetId = input.sheetId?.trim() || sheetIdFromUrl(sourceUrl);

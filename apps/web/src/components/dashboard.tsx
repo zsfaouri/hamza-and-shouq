@@ -298,32 +298,13 @@ export function Dashboard() {
               </div>
             </div>
 
-            <div className="card">
-              <div className="card-head"><span className="card-title">Google Sheets Import</span></div>
-              <div className="card-body">
-                <form style={{ display: "flex", flexDirection: "column", gap: 12 }} onSubmit={onSheet}>
-                  <Field label="Sheet URL">
-                    <input className="input" value={sheetUrl} onChange={(e) => setSheetUrl(e.target.value)} />
-                  </Field>
-                  <button className="btn btn-w" type="submit" disabled={!campaign || loading === "sheet"}>
-                    {loading === "sheet" ? "Importing…" : "Import from Google Sheets"}
-                  </button>
-                </form>
-                {sheetResult && (
-                  <div className="preview" style={{ marginTop: 4 }}>
-                    {sheetResult.message ?? `${sheetResult.imported} contacts imported.`}
-                    {sheetResult.headers?.length
-                      ? <div style={{ marginTop: 6, fontSize: 12, color: "var(--label-3)" }}>Columns: {sheetResult.headers.join(", ")}</div>
-                      : null}
-                    {sheetResult.worksheets?.length
-                      ? <div style={{ marginTop: 6, fontSize: 12, color: "var(--label-3)" }}>
-                          Worksheets: {sheetResult.worksheets.map((sheet) => `${sheet.title} ${sheet.contactCount}/${sheet.rowCount}`).join(", ")}
-                        </div>
-                      : null}
-                  </div>
-                )}
-              </div>
-            </div>
+            <SheetImporter
+              campaignId={campaign?.id ?? null}
+              defaultUrl={sheetUrl}
+              onUrlChange={setSheetUrl}
+              onImported={() => campaign && loadCampaign(campaign.id)}
+              notify={notify}
+            />
           </section>
 
           {/* ── WhatsApp ── */}
@@ -378,40 +359,8 @@ export function Dashboard() {
             </div>
           </section>
 
-          {/* ── Messages table ── */}
-          <section className="card">
-            <div className="card-head">
-              <span className="card-title">Messages</span>
-              {campaign?.messages?.length
-                ? <span style={{ fontSize: 13, color: "var(--label-3)", fontWeight: 400 }}>{campaign.messages.length} total</span>
-                : null}
-            </div>
-            <div className="tbl-wrap">
-              <table className="tbl">
-                <thead>
-                  <tr>
-                    <th>Name</th><th>Phone</th><th>Status</th><th>RSVP</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {campaign?.messages?.length ? campaign.messages.map((m) => (
-                    <tr key={m.id}>
-                      <td style={{ fontWeight: 500 }}>{m.contact.name}</td>
-                      <td style={{ color: "var(--label-3)", fontVariantNumeric: "tabular-nums", fontSize: 13 }}>{m.contact.phone}</td>
-                      <td><span className={msgBadge(m.status)}>{m.status}</span></td>
-                      <td>
-                        {m.rsvpToken?.response
-                          ? <span className={`badge ${m.rsvpToken.response === "YES" ? "b-g" : "b-r"}`}>{m.rsvpToken.response}</span>
-                          : <span style={{ color: "var(--label-3)" }}>—</span>}
-                      </td>
-                    </tr>
-                  )) : (
-                    <tr><td colSpan={4} className="tbl-empty">{campaign ? "No messages yet — use Prepare above." : "Select a campaign to view messages."}</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </section>
+          {/* ── Messages table with sourceTab filter ── */}
+          <MessagesTable campaign={campaign} />
 
         </div>
       </main>
@@ -440,6 +389,229 @@ function Field({ label, req, children }: { label: string; req?: boolean; childre
       <label className="lbl">{label}{req && <span className="req" aria-hidden="true">*</span>}</label>
       {children}
     </div>
+  );
+}
+
+/* ── SheetImporter ───────────────────────────────────────────── */
+type TabInfo = {
+  name: string; gid: string; rowCount: number; contactCount: number;
+  preview: { name: string; phone: string }[];
+};
+type TabStatus = { status: "idle" | "importing" | "done" | "error"; imported?: number; error?: string };
+
+function SheetImporter({ campaignId, defaultUrl, onUrlChange, onImported, notify }: {
+  campaignId: string | null;
+  defaultUrl: string;
+  onUrlChange: (url: string) => void;
+  onImported: () => void;
+  notify: (msg: string, err?: boolean) => void;
+}) {
+  const [url, setUrl] = useState(defaultUrl);
+  const [detecting, setDetecting] = useState(false);
+  const [tabs, setTabs] = useState<TabInfo[] | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [statuses, setStatuses] = useState<Record<string, TabStatus>>({});
+  const [importing, setImporting] = useState(false);
+
+  function handleUrl(v: string) { setUrl(v); onUrlChange(v); }
+
+  async function detect() {
+    if (!campaignId) { notify("Select a campaign first.", true); return; }
+    setDetecting(true); setTabs(null); setStatuses({});
+    try {
+      const r = await apiPost<{ sheetId: string; tabs: TabInfo[] }>(
+        `/api/campaigns/${campaignId}/contacts/google-sheet/detect`, { url },
+      );
+      setTabs(r.tabs);
+      setSelected(new Set(r.tabs.map((t) => t.name)));
+    } catch (e) { notify(e instanceof Error ? e.message : "Detection failed.", true); }
+    finally { setDetecting(false); }
+  }
+
+  async function doImport(selectedOnly: boolean) {
+    if (!campaignId || !tabs) return;
+    const toImport = selectedOnly ? tabs.filter((t) => selected.has(t.name)) : tabs;
+    if (!toImport.length) return;
+    setImporting(true);
+    const next: Record<string, TabStatus> = {};
+    toImport.forEach((t) => { next[t.name] = { status: "importing" }; });
+    setStatuses(next);
+    try {
+      const r = await apiPost<{ imported: number; tabs: { name: string; imported: number; error?: string }[] }>(
+        `/api/campaigns/${campaignId}/contacts/google-sheet`,
+        { url, selectedTabs: toImport.map((t) => t.name) },
+      );
+      const final: Record<string, TabStatus> = {};
+      r.tabs.forEach((t) => { final[t.name] = t.error ? { status: "error", error: t.error } : { status: "done", imported: t.imported }; });
+      setStatuses(final);
+      notify(`Imported ${r.imported} contacts.`);
+      onImported();
+    } catch (e) {
+      const err: Record<string, TabStatus> = {};
+      toImport.forEach((t) => { err[t.name] = { status: "error", error: "Import failed" }; });
+      setStatuses(err);
+      notify(e instanceof Error ? e.message : "Import failed.", true);
+    } finally { setImporting(false); }
+  }
+
+  const totalSelected = tabs?.filter((t) => selected.has(t.name)).reduce((s, t) => s + t.contactCount, 0) ?? 0;
+  const totalAll      = tabs?.reduce((s, t) => s + t.contactCount, 0) ?? 0;
+
+  return (
+    <div className="card">
+      <div className="card-head"><span className="card-title">Google Sheets Import</span></div>
+      <div className="card-body">
+        <div className="sheet-detect-row">
+          <input className="input" value={url} onChange={(e) => handleUrl(e.target.value)} placeholder="Google Sheets URL" />
+          <button className="btn" onClick={detect} disabled={detecting} style={{ flexShrink: 0 }}>
+            {detecting ? "Detecting…" : "Detect Tabs"}
+          </button>
+        </div>
+
+        {tabs && (
+          <div className="sheet-tabs-wrap">
+            <div className="sheet-tabs-head">
+              <span>{tabs.length} tab{tabs.length !== 1 ? "s" : ""} &nbsp;·&nbsp; {totalAll.toLocaleString()} contacts total</span>
+              <button className="btn btn-sm" onClick={() => setSelected(selected.size === tabs.length ? new Set() : new Set(tabs.map((t) => t.name)))}>
+                {selected.size === tabs.length ? "Deselect all" : "Select all"}
+              </button>
+            </div>
+
+            {tabs.map((tab) => {
+              const st = statuses[tab.name];
+              const isOpen = expanded === tab.name;
+              return (
+                <div key={tab.name} className="tab-row">
+                  <div className="tab-row-main">
+                    <input
+                      type="checkbox" className="tab-check"
+                      checked={selected.has(tab.name)}
+                      onChange={(e) => {
+                        const s = new Set(selected);
+                        e.target.checked ? s.add(tab.name) : s.delete(tab.name);
+                        setSelected(s);
+                      }}
+                    />
+                    <span className="tab-name">{tab.name}</span>
+                    <span className="tab-count">{tab.contactCount.toLocaleString()} contacts</span>
+                    {st && (
+                      st.status === "importing" ? <span className="badge b-a">Importing…</span>
+                      : st.status === "done"      ? <span className="badge b-g">✓ {st.imported} imported</span>
+                      : st.status === "error"     ? <span className="badge b-r" title={st.error}>Failed</span>
+                      : null
+                    )}
+                    {tab.preview.length > 0 && (
+                      <button className="btn btn-sm" style={{ marginLeft: "auto", flexShrink: 0 }} onClick={() => setExpanded(isOpen ? null : tab.name)}>
+                        {isOpen ? "Hide ▴" : "Preview ▾"}
+                      </button>
+                    )}
+                  </div>
+                  {isOpen && (
+                    <div className="tab-preview-wrap">
+                      <table className="tbl">
+                        <thead><tr><th>Name</th><th>Phone</th></tr></thead>
+                        <tbody>
+                          {tab.preview.map((c, i) => <tr key={i}><td>{c.name}</td><td style={{ color: "var(--label-3)" }}>{c.phone}</td></tr>)}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            <div className="sheet-actions">
+              <button className="btn" onClick={() => doImport(false)} disabled={importing}>
+                Import All ({totalAll.toLocaleString()})
+              </button>
+              <button className="btn btn-p" onClick={() => doImport(true)} disabled={!selected.size || importing}>
+                {importing ? "Importing…" : `Import Selected (${totalSelected.toLocaleString()})`}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── MessagesTable with sourceTab filter ─────────────────────── */
+type ContactWithTab = Contact & { sourceTab?: string | null };
+type MessageWithTab = Message & { contact: ContactWithTab };
+
+function MessagesTable({ campaign }: { campaign: (CDetail & { messages: MessageWithTab[] }) | null }) {
+  const [activeTab, setActiveTab] = useState<string>("all");
+
+  const sourceTabs = useMemo(() => {
+    if (!campaign?.messages) return [];
+    const seen = new Set<string>();
+    campaign.messages.forEach((m) => { if (m.contact.sourceTab) seen.add(m.contact.sourceTab); });
+    return [...seen].sort();
+  }, [campaign?.messages]);
+
+  const filtered = useMemo(() => {
+    if (!campaign?.messages) return [];
+    if (activeTab === "all") return campaign.messages;
+    return campaign.messages.filter((m) => m.contact.sourceTab === activeTab);
+  }, [campaign?.messages, activeTab]);
+
+  return (
+    <section className="card">
+      <div className="card-head">
+        <span className="card-title">Messages</span>
+        {campaign?.messages?.length
+          ? <span style={{ fontSize: 13, color: "var(--label-3)", fontWeight: 400 }}>{filtered.length} of {campaign.messages.length}</span>
+          : null}
+      </div>
+
+      {sourceTabs.length > 0 && (
+        <div className="filter-bar">
+          <span className="filter-bar-label">Filter by list</span>
+          <button className={`filter-chip${activeTab === "all" ? " active" : ""}`} onClick={() => setActiveTab("all")}>
+            All
+          </button>
+          {sourceTabs.map((tab) => (
+            <button key={tab} className={`filter-chip${activeTab === tab ? " active" : ""}`} onClick={() => setActiveTab(tab)}>
+              {tab}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="tbl-wrap">
+        <table className="tbl">
+          <thead>
+            <tr>
+              <th>Name</th><th>Phone</th>{sourceTabs.length > 0 && <th>List</th>}<th>Status</th><th>RSVP</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length ? filtered.map((m) => (
+              <tr key={m.id}>
+                <td style={{ fontWeight: 500 }}>{m.contact.name}</td>
+                <td style={{ color: "var(--label-3)", fontVariantNumeric: "tabular-nums", fontSize: 13 }}>{m.contact.phone}</td>
+                {sourceTabs.length > 0 && (
+                  <td>{m.contact.sourceTab ? <span className="badge b-x">{m.contact.sourceTab}</span> : <span style={{ color: "var(--label-3)" }}>—</span>}</td>
+                )}
+                <td><span className={msgBadge(m.status)}>{m.status}</span></td>
+                <td>
+                  {m.rsvpToken?.response
+                    ? <span className={`badge ${m.rsvpToken.response === "YES" ? "b-g" : "b-r"}`}>{m.rsvpToken.response}</span>
+                    : <span style={{ color: "var(--label-3)" }}>—</span>}
+                </td>
+              </tr>
+            )) : (
+              <tr>
+                <td colSpan={sourceTabs.length > 0 ? 5 : 4} className="tbl-empty">
+                  {campaign ? (activeTab !== "all" ? `No messages in list "${activeTab}".` : "No messages yet — use Prepare above.") : "Select a campaign to view messages."}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 

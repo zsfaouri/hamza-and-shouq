@@ -14,14 +14,6 @@ type CDetail     = Campaign & { contacts: Contact[]; messages: Message[] };
 type Stats       = { sent: number; failed: number; pending: number; yes: number; no: number };
 type WaStatus    = { provider: "personal" | "meta"; personal: { state: string; qr: string | null; error?: string | null }; meta: { configured: boolean; phoneNumberId: string; graphVersion: string; sendMode: string; templateName: string } };
 type WaSettings  = { provider: "personal" | "meta"; personalBackendUrl: string };
-type SheetResult = {
-  imported: number;
-  totalCount?: number;
-  headers?: string[];
-  contacts?: Contact[];
-  worksheets?: Array<{ title: string; gid: string; rowCount: number; contactCount: number }>;
-  message?: string;
-};
 
 const empty: Stats = { sent: 0, failed: 0, pending: 0, yes: 0, no: 0 };
 
@@ -51,7 +43,6 @@ export function Dashboard() {
   const [loading, setLoading]     = useState<string | null>(null);
   const [active, setActive]       = useState("campaign");
   const [sheetUrl, setSheetUrl]   = useState("https://docs.google.com/spreadsheets/d/1021Z6KyT-dF97FVJAG3c4Nr6thASDpuhPu-hFC_fTA0/edit?usp=sharing");
-  const [, setSheet]              = useState<SheetResult | null>(null);
 
   const [tmpl, setTmpl] = useState({
     name: "Wedding Invite EN",

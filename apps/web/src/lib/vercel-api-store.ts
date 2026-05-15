@@ -15,6 +15,10 @@ type Contact = {
   name: string;
   phone: string;
   customFields: Record<string, unknown>;
+  sourceTab?: string | null;
+  listOwner?: string | null;
+  importBatchId?: string | null;
+  importedAt?: string | null;
 };
 
 type GoogleSheetWorksheet = {
@@ -25,6 +29,7 @@ type GoogleSheetWorksheet = {
 type GoogleSheetWorksheetSummary = GoogleSheetWorksheet & {
   rowCount: number;
   contactCount: number;
+  preview: Array<{ name: string; phone: string }>;
 };
 
 type Message = {
@@ -271,11 +276,14 @@ export function googleSheetPreviewFromCsv(csv: string, sheetTitle?: string) {
       const row = Object.fromEntries(headers.map((header, index) => [header, values[index] ?? ""]));
       const name = firstValue(row, ["name", "name_en", "full_name", "contact", "guest"]);
       const phone = firstValue(row, ["phone", "mobile", "whatsapp", "number", "tel"]);
+      const sourceTab = sheetTitle ?? null;
       return {
         id: id("contact"),
         name,
         phone: normalizePhone(phone),
-        customFields: sheetTitle ? { ...row, sheet: sheetTitle } : row,
+        sourceTab,
+        listOwner: sourceTab,
+        customFields: sheetTitle ? { ...row, sheet: sheetTitle, sourceTab: sheetTitle } : row,
       };
     })
     .filter((contact) => contact.name && contact.phone);
@@ -364,7 +372,7 @@ function mergeHeaders(previews: Array<{ headers: string[] }>) {
   return [...headers.values()];
 }
 
-export async function readGoogleSheetPreview(input: { url?: string; sheetId?: string; gid?: string }) {
+export async function readGoogleSheetPreview(input: { url?: string; sheetId?: string; gid?: string; selectedTabs?: string[] }) {
   const sourceUrl = input.url?.trim() ?? "";
   const sheetId = input.sheetId?.trim() || sheetIdFromUrl(sourceUrl);
   const explicitGid = input.gid?.trim();
@@ -373,7 +381,11 @@ export async function readGoogleSheetPreview(input: { url?: string; sheetId?: st
   const worksheets = explicitGid
     ? [{ title: `gid ${explicitGid}`, gid: explicitGid }]
     : await readGoogleSheetWorksheets(sheetId);
-  const targets = worksheets.length ? worksheets : [{ title: "Sheet 1", gid: "0" }];
+  const selectedTabs = new Set((input.selectedTabs ?? []).map((tab) => tab.trim()).filter(Boolean));
+  const allTargets = worksheets.length ? worksheets : [{ title: "Sheet 1", gid: "0" }];
+  const targets = selectedTabs.size
+    ? allTargets.filter((worksheet) => selectedTabs.has(worksheet.title) || selectedTabs.has(worksheet.gid))
+    : allTargets;
   const previews = await Promise.all(targets.map(async (worksheet) => {
     const preview = googleSheetPreviewFromCsv(await readGoogleSheetCsv(sheetId, worksheet.gid), worksheet.title);
     return { worksheet, ...preview };
@@ -387,11 +399,29 @@ export async function readGoogleSheetPreview(input: { url?: string; sheetId?: st
       gid: preview.worksheet.gid,
       rowCount: preview.rowCount,
       contactCount: preview.contacts.length,
+      preview: preview.contacts.slice(0, 5).map((contact) => ({ name: contact.name, phone: contact.phone })),
     })),
   };
 }
 
-export async function readGoogleSheetContacts(input: { url?: string; sheetId?: string; gid?: string }) {
+export async function detectGoogleSheetTabs(input: { url?: string; sheetId?: string }) {
+  const sourceUrl = input.url?.trim() ?? "";
+  const sheetId = input.sheetId?.trim() || sheetIdFromUrl(sourceUrl);
+  if (!sheetId) throw new Error("Missing Google Sheet URL");
+  const preview = await readGoogleSheetPreview({ url: input.url, sheetId });
+  return {
+    sheetId,
+    tabs: preview.worksheets.map((worksheet) => ({
+      name: worksheet.title,
+      gid: worksheet.gid,
+      rowCount: worksheet.rowCount,
+      contactCount: worksheet.contactCount,
+      preview: worksheet.preview,
+    })),
+  };
+}
+
+export async function readGoogleSheetContacts(input: { url?: string; sheetId?: string; gid?: string; selectedTabs?: string[] }) {
   return (await readGoogleSheetPreview(input)).contacts;
 }
 

@@ -139,7 +139,7 @@ export function Dashboard() {
     void refresh();
     const t = window.setInterval(() => void refresh(), 5000);
     return () => window.clearInterval(t);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => { void loadCampaign(selectedCampaignId); }, [selectedCampaignId]);
 
@@ -160,12 +160,13 @@ export function Dashboard() {
 
   const preview = useMemo(() => {
     const row = campaign?.contacts[0] ?? { name: "Ahmed", phone: "+962790000000" };
+    const publicBase = API_URL || (typeof window === "undefined" ? "" : window.location.origin);
     return templateDraft.bodyEn
       .replaceAll("{{name}}", row.name)
       .replaceAll("{{phone}}", row.phone)
       .replaceAll("{{date}}", "Friday, 20 June")
       .replaceAll("{{venue}}", "Amman")
-      .replaceAll("{{rsvp_link}}", `${API_URL}/rsvp/example-token`);
+      .replaceAll("{{rsvp_link}}", `${publicBase}/rsvp/example-token`);
   }, [campaign?.contacts, templateDraft.bodyEn]);
 
   async function saveTemplate(e: FormEvent) {
@@ -341,7 +342,7 @@ export function Dashboard() {
 
         <div className="sidebar-footer">
           <span className="sidebar-footer-label">API</span>
-          <span className="sidebar-footer-value">{API_URL}</span>
+          <span className="sidebar-footer-value">{API_URL || "Same-origin Vercel API"}</span>
         </div>
       </aside>
 

@@ -602,6 +602,7 @@ button, input, textarea, select { font: inherit; }
   .sidebar-nav {
     flex-direction: row;
     flex-wrap: nowrap;
+    align-items: center;
     overflow-x: auto;
     padding: 8px 12px;
     gap: 4px;

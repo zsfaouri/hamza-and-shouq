@@ -302,7 +302,7 @@ export function Dashboard() {
                     </select>
                   </F>
                   <F label="Personal backend URL">
-                    <input className="input" value={waSettings.personalBackendUrl} placeholder="https://api.yourhost.com" onChange={(e) => setWaSettings((c) => ({ ...c, personalBackendUrl: e.target.value }))} />
+                    <input className="input" value={waSettings.personalBackendUrl ?? ""} placeholder="https://api.yourhost.com" onChange={(e) => setWaSettings((c) => ({ ...c, personalBackendUrl: e.target.value }))} />
                   </F>
                   <button className="btn btn-p btn-w" type="submit" disabled={loading === "wa-settings"}>{loading === "wa-settings" ? "Saving…" : "Save settings"}</button>
                 </form>

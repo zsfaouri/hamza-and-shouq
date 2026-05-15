@@ -44,6 +44,7 @@ type SheetImportResult = {
   totalCount: number;
   headers?: string[];
   contacts?: Contact[];
+  worksheets?: Array<{ title: string; gid: string; rowCount: number; contactCount: number }>;
   message?: string;
 };
 
@@ -554,6 +555,13 @@ export function Dashboard() {
                   {sheetPreview.headers?.length ? (
                     <p className="text-subtle" style={{ margin: "0 0 8px" }}>
                       Headers: {sheetPreview.headers.join(", ")}
+                    </p>
+                  ) : null}
+                  {sheetPreview.worksheets?.length ? (
+                    <p className="text-subtle" style={{ margin: "0 0 8px" }}>
+                      Worksheets: {sheetPreview.worksheets.map((sheet) => (
+                        `${sheet.title} ${sheet.contactCount}/${sheet.rowCount}`
+                      )).join(", ")}
                     </p>
                   ) : null}
                   {sheetPreview.contacts?.length ? (

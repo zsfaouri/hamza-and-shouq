@@ -1,22 +1,32 @@
 import { parse } from "csv-parse/sync";
-import { parseCsvContacts, type ParsedContact } from "./spreadsheet.js";
+import { parseContactsFromRows, type ParsedContact } from "./spreadsheet.js";
 import https from "node:https";
 
 const SHEET_ID_PATTERN = /\/spreadsheets\/d\/([^/]+)/i;
 const GID_PATTERN = /[#?&]gid=([0-9]+)/i;
+
+type GoogleSheetWorksheet = {
+  title: string;
+  gid: string;
+};
+
+type GoogleSheetWorksheetSummary = GoogleSheetWorksheet & {
+  rowCount: number;
+  contactCount: number;
+};
 
 export function sheetIdFromUrl(url: string) {
   return url.match(SHEET_ID_PATTERN)?.[1] ?? "";
 }
 
 export function gidFromUrl(url: string) {
-  return url.match(GID_PATTERN)?.[1] ?? "0";
+  return url.match(GID_PATTERN)?.[1] ?? "";
 }
 
 export function googleSheetCsvUrl(input: { url?: string; sheetId?: string; gid?: string }) {
   const sourceUrl = input.url?.trim() ?? "";
   const sheetId = input.sheetId?.trim() || sheetIdFromUrl(sourceUrl);
-  const gid = input.gid?.trim() || gidFromUrl(sourceUrl);
+  const gid = input.gid?.trim() || gidFromUrl(sourceUrl) || "0";
 
   if (!sheetId) throw new Error("Missing Google Sheet ID or URL");
   return `https://docs.google.com/spreadsheets/d/${encodeURIComponent(sheetId)}/export?format=csv&gid=${encodeURIComponent(gid)}`;
@@ -51,22 +61,30 @@ function readUrlWithNodeHttps(url: string, redirects = 0): Promise<Buffer> {
   });
 }
 
-function googleSheetPreviewFromCsv(buffer: Buffer) {
+function googleSheetPreviewFromCsv(buffer: Buffer, sheetTitle?: string) {
   const [headers = []] = parse(buffer, {
     to_line: 1,
     relax_column_count: true,
     skip_empty_lines: true,
     trim: true,
   }) as string[][];
+  const rows = parse(buffer, {
+    columns: true,
+    skip_empty_lines: true,
+    trim: true,
+  }) as Record<string, unknown>[];
 
   return {
     headers,
-    contacts: parseCsvContacts(buffer),
+    contacts: parseContactsFromRows(rows).map((contact) => ({
+      ...contact,
+      customFields: sheetTitle ? { ...contact.customFields, sheet: sheetTitle } : contact.customFields,
+    })),
+    rowCount: rows.length,
   };
 }
 
-async function readGoogleSheetCsv(input: { url?: string; sheetId?: string; gid?: string }): Promise<Buffer> {
-  const url = googleSheetCsvUrl(input);
+async function readUrlBuffer(url: string): Promise<Buffer> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15_000);
   timeout.unref?.();
@@ -83,8 +101,73 @@ async function readGoogleSheetCsv(input: { url?: string; sheetId?: string; gid?:
   }
 }
 
+async function readGoogleSheetCsv(sheetId: string, gid: string): Promise<Buffer> {
+  return readUrlBuffer(`https://docs.google.com/spreadsheets/d/${encodeURIComponent(sheetId)}/export?format=csv&gid=${encodeURIComponent(gid)}`);
+}
+
+function normalizeKey(value: string) {
+  return value.toLowerCase().trim();
+}
+
+function mergeHeaders(previews: Array<{ headers: string[] }>) {
+  const headers = new Map<string, string>();
+  for (const preview of previews) {
+    for (const header of preview.headers) {
+      if (!headers.has(normalizeKey(header))) headers.set(normalizeKey(header), header);
+    }
+  }
+  return [...headers.values()];
+}
+
+function parseGoogleWorksheets(html: string): GoogleSheetWorksheet[] {
+  const sheets = new Map<string, GoogleSheetWorksheet>();
+  const entryPattern = /\[21350203,"((?:\\.|[^"\\])*)"\]/g;
+
+  for (const match of html.matchAll(entryPattern)) {
+    try {
+      const decoded = JSON.parse(`"${match[1]}"`) as string;
+      const entry = JSON.parse(decoded) as unknown[];
+      const gid = String(entry[2] ?? "");
+      const title = (((entry[3] as Array<Record<string, unknown>> | undefined)?.[0]?.["1"] as unknown[][] | undefined)?.[0]?.[2]);
+      if (gid && typeof title === "string") sheets.set(gid, { gid, title });
+    } catch {
+      // Ignore unrelated bootstrap entries.
+    }
+  }
+
+  return [...sheets.values()];
+}
+
+async function readGoogleSheetWorksheets(sheetId: string) {
+  const url = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(sheetId)}/edit?usp=sharing`;
+  return parseGoogleWorksheets((await readUrlBuffer(url)).toString("utf8"));
+}
+
 export async function readGoogleSheetPreview(input: { url?: string; sheetId?: string; gid?: string }) {
-  return googleSheetPreviewFromCsv(await readGoogleSheetCsv(input));
+  const sourceUrl = input.url?.trim() ?? "";
+  const sheetId = input.sheetId?.trim() || sheetIdFromUrl(sourceUrl);
+  const explicitGid = input.gid?.trim();
+  if (!sheetId) throw new Error("Missing Google Sheet ID or URL");
+
+  const worksheets = explicitGid
+    ? [{ title: `gid ${explicitGid}`, gid: explicitGid }]
+    : await readGoogleSheetWorksheets(sheetId);
+  const targets = worksheets.length ? worksheets : [{ title: "Sheet 1", gid: "0" }];
+  const previews = await Promise.all(targets.map(async (worksheet) => {
+    const preview = googleSheetPreviewFromCsv(await readGoogleSheetCsv(sheetId, worksheet.gid), worksheet.title);
+    return { worksheet, ...preview };
+  }));
+
+  return {
+    headers: mergeHeaders(previews),
+    contacts: previews.flatMap((preview) => preview.contacts),
+    worksheets: previews.map((preview): GoogleSheetWorksheetSummary => ({
+      title: preview.worksheet.title,
+      gid: preview.worksheet.gid,
+      rowCount: preview.rowCount,
+      contactCount: preview.contacts.length,
+    })),
+  };
 }
 
 export async function readGoogleSheetContacts(input: { url?: string; sheetId?: string; gid?: string }): Promise<ParsedContact[]> {

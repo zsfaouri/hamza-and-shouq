@@ -244,10 +244,11 @@ app.post("/api/campaigns/:id/contacts/google-sheet", async (req, res) => {
     imported: contacts.length,
     totalCount,
     headers: preview.headers,
+    worksheets: preview.worksheets,
     contacts: contacts.map((contact, index) => ({ id: `${campaignId}-${index}`, name: contact.name, phone: contact.phone })),
     message: contacts.length
-      ? `Read ${contacts.length} contact${contacts.length === 1 ? "" : "s"} from Google Sheets.`
-      : `Google Sheet is reachable. Headers read: ${preview.headers.join(", ") || "none"}. No contact rows found.`,
+      ? `Read ${contacts.length} contact${contacts.length === 1 ? "" : "s"} from ${preview.worksheets.length} worksheet${preview.worksheets.length === 1 ? "" : "s"}.`
+      : `Google Sheet is reachable. Read ${preview.worksheets.length} worksheet${preview.worksheets.length === 1 ? "" : "s"}, but found no rows with both name and number.`,
   });
 });
 

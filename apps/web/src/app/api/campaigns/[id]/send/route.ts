@@ -1,5 +1,13 @@
 import { sendPersonalWhatsAppMessage } from "@/lib/personal-whatsapp";
-import { hydrateStore, json, persistStore, sendMetaMessage, settings } from "@/lib/vercel-api-store";
+import {
+  ensureStarterCampaignContactsFromGoogleSheet,
+  hydrateStore,
+  json,
+  persistStore,
+  prepareCampaignMessages,
+  sendMetaMessage,
+  settings,
+} from "@/lib/vercel-api-store";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -9,6 +17,8 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
   const { id } = await context.params;
   const campaign = (await hydrateStore()).campaigns.find((item) => item.id === id);
   if (!campaign) return json({ error: "Campaign not found" }, { status: 404 });
+  await ensureStarterCampaignContactsFromGoogleSheet(campaign);
+  if (!campaign.messages.length) prepareCampaignMessages(campaign);
   const provider = settings().provider;
   campaign.status = "SENDING";
   for (const message of campaign.messages.filter((item) => item.status === "PENDING")) {

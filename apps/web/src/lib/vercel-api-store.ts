@@ -89,13 +89,18 @@ const starterTemplate: Template = {
   mediaType: null,
 };
 
+const starterCampaignId = "starter-campaign";
+const defaultGoogleSheetUrl = process.env.GOOGLE_SHEET_URL
+  ?? process.env.NEXT_PUBLIC_GOOGLE_SHEET_URL
+  ?? "https://docs.google.com/spreadsheets/d/1021Z6KyT-dF97FVJAG3c4Nr6thASDpuhPu-hFC_fTA0/edit?usp=sharing";
+
 function globalStore() {
   const globalWithStore = globalThis as typeof globalThis & { __hsStore?: Store };
   if (!globalWithStore.__hsStore) {
     globalWithStore.__hsStore = {
       templates: [starterTemplate],
       campaigns: [{
-        id: "starter-campaign",
+        id: starterCampaignId,
         name: "Wedding Invitations",
         status: "DRAFT",
         totalCount: 0,
@@ -423,6 +428,46 @@ export async function detectGoogleSheetTabs(input: { url?: string; sheetId?: str
 
 export async function readGoogleSheetContacts(input: { url?: string; sheetId?: string; gid?: string; selectedTabs?: string[] }) {
   return (await readGoogleSheetPreview(input)).contacts;
+}
+
+export async function ensureStarterCampaignContactsFromGoogleSheet(campaign: Campaign) {
+  if (campaign.id !== starterCampaignId || campaign.contacts.length) return false;
+  const preview = await readGoogleSheetPreview({ url: defaultGoogleSheetUrl });
+  const importBatchId = id("batch");
+  const importedAt = new Date().toISOString();
+  campaign.contacts = preview.contacts.map((contact) => ({
+    ...contact,
+    importBatchId,
+    importedAt,
+  }));
+  campaign.messages = [];
+  campaign.status = campaign.contacts.length ? "READY" : "DRAFT";
+  campaign.totalCount = campaign.contacts.length;
+  return true;
+}
+
+export function prepareCampaignMessages(campaign: Campaign) {
+  if (!campaign.template) return 0;
+  campaign.messages = campaign.contacts.map((contact) => {
+    const token = id("rsvp");
+    const rsvpLink = `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://web-zsfaouris-projects.vercel.app"}/rsvp/${token}`;
+    const body = renderTemplate(campaign.template?.bodyEn ?? "", {
+      ...contact.customFields,
+      name: contact.name,
+      phone: contact.phone,
+      rsvp_link: rsvpLink,
+    });
+    return {
+      id: id("message"),
+      body,
+      status: "PENDING" as const,
+      error: null,
+      contact,
+      rsvpToken: { response: null, clickedAt: null },
+    };
+  });
+  campaign.status = campaign.messages.length ? "READY" : "DRAFT";
+  return campaign.messages.length;
 }
 
 function readUrlWithNodeHttps(url: string, redirects = 0): Promise<string> {

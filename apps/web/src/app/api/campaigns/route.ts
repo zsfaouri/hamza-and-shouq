@@ -1,9 +1,12 @@
-import { hydrateStore, id, json, persistStore } from "@/lib/vercel-api-store";
+import { ensureStarterCampaignContactsFromGoogleSheet, hydrateStore, id, json, persistStore } from "@/lib/vercel-api-store";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   const data = await hydrateStore();
+  const changed = (await Promise.all(data.campaigns.map((campaign) => ensureStarterCampaignContactsFromGoogleSheet(campaign))))
+    .some(Boolean);
+  if (changed) await persistStore();
   return json(data.campaigns.map((campaign) => ({
     id: campaign.id,
     name: campaign.name,

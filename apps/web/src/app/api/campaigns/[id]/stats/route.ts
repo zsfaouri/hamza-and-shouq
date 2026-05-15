@@ -1,4 +1,10 @@
-import { hydrateStore, json } from "@/lib/vercel-api-store";
+import {
+  ensureStarterCampaignContactsFromGoogleSheet,
+  hydrateStore,
+  json,
+  persistStore,
+  prepareCampaignMessages,
+} from "@/lib/vercel-api-store";
 
 export const dynamic = "force-dynamic";
 
@@ -6,6 +12,12 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   const { id } = await context.params;
   const campaign = (await hydrateStore()).campaigns.find((item) => item.id === id);
   if (!campaign) return json({ error: "Campaign not found" }, { status: 404 });
+  let changed = await ensureStarterCampaignContactsFromGoogleSheet(campaign);
+  if (campaign.contacts.length && !campaign.messages.length) {
+    prepareCampaignMessages(campaign);
+    changed = true;
+  }
+  if (changed) await persistStore();
   return json({
     sent: campaign.messages.filter((message) => message.status === "SENT").length,
     failed: campaign.messages.filter((message) => message.status === "FAILED").length,

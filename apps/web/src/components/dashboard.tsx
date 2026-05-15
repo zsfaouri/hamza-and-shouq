@@ -8,7 +8,7 @@ import { API_URL, apiGet, apiPost, apiPut } from "@/lib/api";
 /* ── Types ─────────────────────────────────────────────────── */
 type Template    = { id: string; name: string; bodyEn: string; bodyAr?: string | null; mediaUrl?: string | null; mediaType?: string | null };
 type Campaign    = { id: string; name: string; status: string; totalCount: number; sentCount: number; failedCount: number; template?: Template | null };
-type Contact     = { id: string; name: string; phone: string };
+type Contact     = { id: string; name: string; phone: string; sourceTab?: string | null };
 type Message     = { id: string; status: string; contact: Contact; rsvpToken?: { response?: "YES" | "NO" | null } | null };
 type CDetail     = Campaign & { contacts: Contact[]; messages: Message[] };
 type Stats       = { sent: number; failed: number; pending: number; yes: number; no: number };
@@ -51,7 +51,7 @@ export function Dashboard() {
   const [loading, setLoading]     = useState<string | null>(null);
   const [active, setActive]       = useState("campaign");
   const [sheetUrl, setSheetUrl]   = useState("https://docs.google.com/spreadsheets/d/1021Z6KyT-dF97FVJAG3c4Nr6thASDpuhPu-hFC_fTA0/edit?usp=sharing");
-  const [sheetResult, setSheet]   = useState<SheetResult | null>(null);
+  const [, setSheet]              = useState<SheetResult | null>(null);
 
   const [tmpl, setTmpl] = useState({
     name: "Wedding Invite EN",
@@ -121,7 +121,6 @@ export function Dashboard() {
   const onUpdateTmpl  = (e: FormEvent) => { e.preventDefault(); if (!campaign?.template) return; run("tmpl", async () => { const u = await apiPut<Template>(`/api/templates/${campaign.template!.id}`, { name: tmpl.name, bodyEn: tmpl.bodyEn, bodyAr: tmpl.bodyAr || null, mediaUrl: tmpl.mediaUrl || null, mediaType: tmpl.mediaType || null }); setTemplates((c) => c.map((t) => t.id === u.id ? u : t)); notify("Template updated."); }); };
   const onCreateCmp   = (e: FormEvent) => { e.preventDefault(); run("cmp", async () => { const c = await apiPost<Campaign>("/api/campaigns", cmp); notify("Campaign created."); setCampaigns((p) => [c, ...p]); setSelId(c.id); }); };
   const onContacts    = (e: FormEvent<HTMLFormElement>) => { e.preventDefault(); if (!campaign) return; run("contacts", async () => { await apiPost(`/api/campaigns/${campaign.id}/contacts`, new FormData(e.currentTarget)); notify("Contacts imported."); await loadCampaign(campaign.id); }); };
-  const onSheet       = (e: FormEvent<HTMLFormElement>) => { e.preventDefault(); if (!campaign) return; run("sheet", async () => { const r = await apiPost<SheetResult>(`/api/campaigns/${campaign.id}/contacts/google-sheet`, { url: sheetUrl }); setSheet(r); notify(r.message ?? `Imported ${r.imported} contacts.`); await loadCampaign(campaign.id); }); };
   const onMedia       = (e: FormEvent<HTMLFormElement>) => { e.preventDefault(); run("media", async () => { const m = await apiPost<{ url: string; type: string }>("/api/media", new FormData(e.currentTarget)); setTmpl((c) => ({ ...c, mediaUrl: m.url, mediaType: m.type })); notify("Media uploaded."); }); };
   const onPrepare     = () => { if (!campaign) return; run("prepare", async () => { await apiPost(`/api/campaigns/${campaign.id}/prepare`); notify("Messages prepared."); await loadCampaign(campaign.id); }); };
   const onSend        = () => { if (!campaign) return; const n = campaign.contacts.length; if (!window.confirm(`Send to ${n} contact${n !== 1 ? "s" : ""}? This cannot be undone.`)) return; run("send", async () => { await apiPost(`/api/campaigns/${campaign.id}/send`); notify("Sending started."); await loadCampaign(campaign.id); }); };
@@ -489,7 +488,7 @@ function SheetImporter({ campaignId, defaultUrl, onUrlChange, onImported, notify
                       checked={selected.has(tab.name)}
                       onChange={(e) => {
                         const s = new Set(selected);
-                        e.target.checked ? s.add(tab.name) : s.delete(tab.name);
+                        if (e.target.checked) { s.add(tab.name); } else { s.delete(tab.name); }
                         setSelected(s);
                       }}
                     />
@@ -537,10 +536,7 @@ function SheetImporter({ campaignId, defaultUrl, onUrlChange, onImported, notify
 }
 
 /* ── MessagesTable with sourceTab filter ─────────────────────── */
-type ContactWithTab = Contact & { sourceTab?: string | null };
-type MessageWithTab = Message & { contact: ContactWithTab };
-
-function MessagesTable({ campaign }: { campaign: (CDetail & { messages: MessageWithTab[] }) | null }) {
+function MessagesTable({ campaign }: { campaign: CDetail | null }) {
   const [activeTab, setActiveTab] = useState<string>("all");
 
   const sourceTabs = useMemo(() => {

@@ -577,19 +577,82 @@ button, input, textarea, select { font: inherit; }
   .stats-row { grid-template-columns: repeat(3, minmax(0,1fr)); }
 }
 
+/* ── Tablet / mobile: sidebar collapses to a sticky top bar ── */
 @media (max-width: 900px) {
-  .sidebar { position: static; width: 100%; height: auto; flex-direction: row; flex-wrap: wrap; padding: 16px; }
-  .sidebar-nav { flex-direction: row; flex-wrap: wrap; padding: 0; flex: none; }
+  body { overflow-x: hidden; }
+
+  .sidebar {
+    position: sticky;
+    top: 0;
+    width: 100%;
+    height: auto;
+    flex-direction: column;
+    padding: 0;
+    z-index: 100;
+    border-bottom: 1px solid var(--sidebar-line);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.25);
+  }
+
+  .sidebar-brand {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--sidebar-line);
+  }
+
+  /* Horizontal scrollable pill nav */
+  .sidebar-nav {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding: 8px 12px;
+    gap: 4px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .sidebar-nav::-webkit-scrollbar { display: none; }
+
+  .nav-label { display: none; }
+
+  .nav-link {
+    flex-shrink: 0;
+    padding: 7px 14px;
+    font-size: 12.5px;
+    white-space: nowrap;
+    border-radius: 20px;
+  }
+
+  .nav-icon { width: 14px; height: 14px; }
+
+  /* Hide API footer on mobile — wastes space */
+  .sidebar-footer { display: none; }
+
   .main { margin-left: 0; }
+
   .two-col { grid-template-columns: 1fr; }
-  .content { padding: 16px; }
-  .page-header { padding: 16px 16px 0; }
+
+  .content { padding: 14px; gap: 14px; }
+
+  .page-header { padding: 14px 14px 0; flex-wrap: wrap; gap: 8px; }
+
+  .stats-row { grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; }
+
+  .choice-grid { grid-template-columns: 1fr; }
+
+  .card { padding: 18px; }
+
+  .card-divider { margin: 14px -18px; }
+
+  .qr-wrap { padding: 16px; }
+
+  .qr { width: 150px; height: 150px; }
 }
 
-@media (max-width: 600px) {
-  .stats-row { grid-template-columns: repeat(2, minmax(0,1fr)); }
-  .choice-grid { grid-template-columns: 1fr; }
-  .stat-value { font-size: 26px; }
+/* ── Small phones ── */
+@media (max-width: 480px) {
+  .stats-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stat-card { padding: 14px 14px 16px; }
+  .stat-value { font-size: 28px; }
+  .stat-label { font-size: 10px; }
+  .page-title { font-size: 17px; }
 }
 
 /* ─── Motion ─────────────────────────────────────────────────── */

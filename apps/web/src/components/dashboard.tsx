@@ -53,16 +53,32 @@ type Stats = {
 };
 
 type WaStatus = {
-  state: string;
-  qr: string | null;
+  provider: "personal" | "meta";
+  personal: {
+    state: string;
+    qr: string | null;
+    error?: string | null;
+  };
+  meta: {
+    configured: boolean;
+    phoneNumberId: string;
+    graphVersion: string;
+    sendMode: string;
+    templateName: string;
+  };
 };
 
 const emptyStats: Stats = { sent: 0, failed: 0, pending: 0, yes: 0, no: 0 };
 
 function waStatusClass(state: string): string {
   if (state === "ready") return "sent";
-  if (state === "disconnected" || state === "disabled") return "failed";
+  if (state === "disconnected" || state === "disabled" || state === "meta not configured") return "failed";
   return "pending";
+}
+
+function currentWaState(status: WaStatus): string {
+  if (status.provider === "meta") return status.meta.configured ? "meta configured" : "meta not configured";
+  return status.personal.state;
 }
 
 export function Dashboard() {
@@ -71,11 +87,18 @@ export function Dashboard() {
   const [selectedCampaignId, setSelectedCampaignId] = useState("");
   const [campaign, setCampaign] = useState<CampaignDetail | null>(null);
   const [stats, setStats] = useState<Stats>(emptyStats);
-  const [wa, setWa] = useState<WaStatus>({ state: "loading", qr: null });
+  const [wa, setWa] = useState<WaStatus>({
+    provider: "personal",
+    personal: { state: "loading", qr: null, error: null },
+    meta: { configured: false, phoneNumberId: "", graphVersion: "", sendMode: "text", templateName: "" },
+  });
   const [notice, setNotice] = useState("");
   const [noticeType, setNoticeType] = useState<"success" | "error">("success");
   const [loading, setLoading] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState("campaign");
+  const [sheetUrl, setSheetUrl] = useState(
+    "https://docs.google.com/spreadsheets/d/1021Z6KyT-dF97FVJAG3c4Nr6thASDpuhPu-hFC_fTA0/edit?usp=sharing",
+  );
 
   const initialized = useRef(false);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -134,7 +157,7 @@ export function Dashboard() {
     void refresh();
     const timer = window.setInterval(() => void refresh(), 5000);
     return () => window.clearInterval(timer);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     void loadCampaign(selectedCampaignId);
@@ -238,6 +261,24 @@ export function Dashboard() {
     }
   }
 
+  async function importGoogleSheet(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!campaign) return;
+    setLoading("google-sheet");
+    try {
+      const result = await apiPost<{ imported: number; totalCount: number }>(
+        `/api/campaigns/${campaign.id}/contacts/google-sheet`,
+        { url: sheetUrl },
+      );
+      showNotice(`Imported ${result.imported} contact${result.imported === 1 ? "" : "s"} from Google Sheets.`);
+      await loadCampaign(campaign.id);
+    } catch (err) {
+      showNotice(err instanceof Error ? err.message : "Failed to import Google Sheet.", "error");
+    } finally {
+      setLoading(null);
+    }
+  }
+
   async function uploadMedia(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoading("upload-media");
@@ -297,6 +338,7 @@ export function Dashboard() {
   }
 
   const isSaving = loading === "save-template" || loading === "update-template";
+  const waState = currentWaState(wa);
 
   return (
     <div className="shell">
@@ -466,6 +508,23 @@ export function Dashboard() {
 
           <section id="contacts" className="panel">
             <h2>Contacts</h2>
+            <form className="grid" onSubmit={importGoogleSheet} style={{ marginBottom: 16 }}>
+              <Field label="Google Sheet URL">
+                <input
+                  className="input"
+                  value={sheetUrl}
+                  onChange={(event) => setSheetUrl(event.target.value)}
+                  placeholder="https://docs.google.com/spreadsheets/d/..."
+                />
+              </Field>
+              <button
+                className="btn primary"
+                type="submit"
+                disabled={!campaign || loading === "google-sheet"}
+              >
+                {loading === "google-sheet" ? "Importing..." : "Import Google Sheet"}
+              </button>
+            </form>
             <form className="grid" onSubmit={uploadContacts}>
               <Field label="Spreadsheet (.xlsx or .csv)">
                 <input className="input" name="file" type="file" accept=".xlsx,.csv" />
@@ -483,19 +542,19 @@ export function Dashboard() {
           <section id="whatsapp" className="grid two-col">
             <div className="panel">
               <h2>WhatsApp session</h2>
-              <p className={`status ${waStatusClass(wa.state)}`}>{wa.state}</p>
+              <p className={`status ${waStatusClass(waState)}`}>{waState}</p>
               <button
                 className="btn"
                 type="button"
                 onClick={startWhatsApp}
-                disabled={loading === "whatsapp"}
+                disabled={wa.provider !== "personal" || loading === "whatsapp"}
               >
                 {loading === "whatsapp" ? "Starting…" : "Start WhatsApp session"}
               </button>
-              {wa.qr ? (
-                <img className="qr" src={wa.qr} alt="WhatsApp login QR code" />
+              {wa.personal.qr ? (
+                <img className="qr" src={wa.personal.qr} alt="WhatsApp login QR code" />
               ) : (
-                <p className="muted">QR appears when the backend needs login.</p>
+                <p className="muted">{wa.personal.error ?? "QR appears when the backend needs login."}</p>
               )}
             </div>
             <div className="panel">

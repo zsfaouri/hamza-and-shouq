@@ -408,11 +408,13 @@ code {
 
 /* ─── Budget page ─────────────────────────────────────────── */
 .budget-shell {
-  margin-left: 240px;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
   background: var(--bg);
+  max-width: 1280px;
+  margin: 0 auto;
+  width: 100%;
 }
 
 .budget-loading {
@@ -422,11 +424,12 @@ code {
 
 .budget-topbar {
   position: sticky; top: 0; z-index: 30;
-  background: rgba(242,242,247,0.9);
+  background: rgba(242,242,247,0.92);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-bottom: 1px solid var(--sep);
-  padding: 0 24px; height: 56px;
+  border-radius: 0;
+  padding: 0 28px; height: 56px;
   display: flex; align-items: center; justify-content: space-between; gap: 16px;
 }
 
@@ -435,7 +438,7 @@ code {
 
 .budget-alerts {
   display: flex; flex-direction: column; gap: 6px;
-  padding: 12px 24px 0;
+  padding: 12px 28px 0;
 }
 .budget-alert {
   padding: 10px 14px; border-radius: var(--r-sm);
@@ -448,7 +451,7 @@ code {
 /* ── Tabs ── */
 .budget-tabs {
   display: flex; align-items: center; gap: 2px;
-  padding: 12px 24px 0; border-bottom: 1px solid var(--sep);
+  padding: 12px 28px 0; border-bottom: 1px solid var(--sep);
   background: var(--bg);
 }
 .budget-tab {
@@ -466,7 +469,7 @@ code {
 }
 
 /* ── Content ── */
-.budget-content { padding: 20px 24px 48px; display: flex; flex-direction: column; gap: 14px; }
+.budget-content { padding: 20px 28px 48px; display: flex; flex-direction: column; gap: 14px; }
 
 /* ── Hero stats (3 cards) ── */
 .budget-hero-stats {
@@ -628,7 +631,6 @@ code {
 
 /* ── Budget responsive ── */
 @media (max-width: 960px) {
-  .budget-shell          { margin-left: 0; }
   .budget-hero-stats     { grid-template-columns: 1fr 1fr; }
   .budget-secondary-stats { grid-template-columns: 1fr 1fr; }
   .budget-content        { padding: 14px; }

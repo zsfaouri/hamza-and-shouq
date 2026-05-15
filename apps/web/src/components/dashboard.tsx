@@ -134,7 +134,9 @@ export function Dashboard() {
       {/* ── Sidebar (light, macOS style) ── */}
       <aside className="sidebar">
         <div className="s-brand">
-          <div className="s-mark">HS</div>
+          <div className="s-mark">
+            <img src="/logo.png" alt="" />
+          </div>
           <div>
             <div className="s-name">Hamza &amp; Shouq</div>
             <div className="s-sub">Campaign system</div>

@@ -474,6 +474,71 @@ code {
 .filter-chip:hover   { background: var(--fill); border-color: var(--label-3); }
 .filter-chip.active  { background: var(--green-bg); border-color: var(--green-dark); color: var(--green-dark); font-weight: 600; }
 
+.access-shell { scroll-margin-top: 68px; }
+
+.access-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.access-role {
+  min-height: 118px;
+  border: 1px solid var(--sep);
+  border-radius: var(--r-sm);
+  background: var(--fill-2);
+  padding: 12px;
+}
+
+.access-role-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.access-role-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--label);
+}
+
+.access-role p {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--label-2);
+}
+
+.access-matrix-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--sep);
+  border-radius: var(--r-sm);
+}
+
+.access-matrix th,
+.access-matrix td {
+  padding: 10px 12px;
+}
+
+.access-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 64px;
+  padding: 4px 9px;
+  border-radius: var(--pill);
+  background: var(--green-bg);
+  color: var(--green-label);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.access-pill.off {
+  background: var(--fill);
+  color: var(--label-3);
+}
+
 /* ─── Responsive ──────────────────────────────────────────── */
 @media (max-width: 960px) {
   .sidebar {
@@ -497,12 +562,14 @@ code {
   .content { padding: 14px; gap: 12px; }
   .two     { grid-template-columns: 1fr; }
   .stats   { grid-template-columns: repeat(3, minmax(0,1fr)); gap: 8px; }
+  .access-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
 }
 
 @media (max-width: 540px) {
   .stats    { grid-template-columns: repeat(2, minmax(0,1fr)); }
   .stat-val { font-size: 26px; }
   .card-body { padding: 14px; }
+  .access-grid { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {

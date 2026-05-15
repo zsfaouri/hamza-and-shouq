@@ -88,7 +88,7 @@ export function Dashboard() {
   useEffect(() => { void refresh(); const t = window.setInterval(() => void refresh(), 5000); return () => window.clearInterval(t); }, []);
   useEffect(() => { void loadCampaign(selId); }, [selId]);
   useEffect(() => {
-    const ids = ["campaign", "template", "contacts", "whatsapp"];
+    const ids = ["campaign", "template", "contacts", "whatsapp", "access"];
     const obs = ids.map((id) => {
       const el = document.getElementById(id); if (!el) return null;
       const o = new IntersectionObserver(([e]) => { if (e.isIntersecting) setActive(id); }, { rootMargin: "-20% 0px -70% 0px" });
@@ -139,6 +139,7 @@ export function Dashboard() {
           <NavItem href="#template" on={active === "template"} icon={<IconTemplate />}>Template</NavItem>
           <NavItem href="#contacts" on={active === "contacts"} icon={<IconContacts />}>Contacts</NavItem>
           <NavItem href="#whatsapp" on={active === "whatsapp"} icon={<IconWa />}>WhatsApp</NavItem>
+          <NavItem href="#access" on={active === "access"} icon={<IconAccess />}>Access</NavItem>
         </nav>
 
         <div className="s-footer">
@@ -350,6 +351,10 @@ export function Dashboard() {
           </section>
 
           {/* ── Messages table with sourceTab filter ── */}
+          <section id="access" className="access-shell">
+            <AccessPanel />
+          </section>
+
           <MessagesTable campaign={campaign} />
 
         </div>
@@ -383,6 +388,70 @@ function Field({ label, req, children }: { label: string; req?: boolean; childre
 }
 
 /* ── SheetImporter ───────────────────────────────────────────── */
+function AccessPanel() {
+  const roles = [
+    { name: "Owner", access: "Full system access", users: "Zaid" },
+    { name: "Admin", access: "Campaigns, contacts, templates, WhatsApp settings", users: "Hamza, Shouq" },
+    { name: "Sender", access: "Prepare, review, and send approved campaigns", users: "Unassigned" },
+    { name: "Viewer", access: "Read-only dashboard and RSVP tracking", users: "Unassigned" },
+  ];
+  const permissions = [
+    ["Campaigns", "Full", "Full", "Send", "View"],
+    ["Templates", "Full", "Edit", "View", "View"],
+    ["Contacts", "Full", "Import", "View", "View"],
+    ["WhatsApp", "Full", "Settings", "Send", "View"],
+    ["Access", "Full", "View", "None", "None"],
+  ];
+
+  return (
+    <div className="card">
+      <div className="card-head">
+        <span className="card-title">Roles &amp; Access</span>
+        <span className="badge b-g">Visible</span>
+      </div>
+      <div className="card-body">
+        <div className="access-grid">
+          {roles.map((role) => (
+            <div className="access-role" key={role.name}>
+              <div className="access-role-head">
+                <span className="access-role-name">{role.name}</span>
+                <span className="badge b-x">{role.users}</span>
+              </div>
+              <p>{role.access}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="access-matrix-wrap">
+          <table className="tbl access-matrix">
+            <thead>
+              <tr>
+                <th>Area</th>
+                <th>Owner</th>
+                <th>Admin</th>
+                <th>Sender</th>
+                <th>Viewer</th>
+              </tr>
+            </thead>
+            <tbody>
+              {permissions.map(([area, owner, admin, sender, viewer]) => (
+                <tr key={area}>
+                  <td style={{ fontWeight: 600 }}>{area}</td>
+                  {[owner, admin, sender, viewer].map((value, index) => (
+                    <td key={`${area}-${index}`}>
+                      <span className={`access-pill ${value === "None" ? "off" : ""}`}>{value}</span>
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 type TabInfo = {
   name: string; gid: string; rowCount: number; contactCount: number;
   preview: { name: string; phone: string }[];
@@ -607,3 +676,4 @@ const IconGrid     = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentC
 const IconTemplate = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="1" y="1" width="14" height="10" rx="1.5"/><path d="M4 14h8M8 11v3" strokeLinecap="round"/></svg>;
 const IconContacts = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="6" cy="5" r="3"/><path d="M1 14c0-3 2-5 5-5s5 2 5 5" strokeLinecap="round"/><path d="M12 6l2 2M14 6l-2 2" strokeLinecap="round"/></svg>;
 const IconWa       = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="6.5"/><path d="M5.5 9.5c.5 1 1.5 2 2.5 2 2.5 0 3.5-2 3.5-3.5S10 4 8 4 5 5.5 5 7.5c0 .7.2 1.3.5 1.8L4.5 12l1.5-.5" strokeLinecap="round" strokeLinejoin="round"/></svg>;
+const IconAccess   = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M8 1.5l5 2v3.8c0 3.2-2.1 5.9-5 7.2-2.9-1.3-5-4-5-7.2V3.5l5-2z" strokeLinejoin="round"/><path d="M6 8l1.4 1.4L10.5 6" strokeLinecap="round" strokeLinejoin="round"/></svg>;

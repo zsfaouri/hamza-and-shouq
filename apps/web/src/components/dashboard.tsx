@@ -24,11 +24,7 @@ type Campaign = {
   template?: Template | null;
 };
 
-type Contact = {
-  id: string;
-  name: string;
-  phone: string;
-};
+type Contact = { id: string; name: string; phone: string };
 
 type Message = {
   id: string;
@@ -39,46 +35,35 @@ type Message = {
   rsvpToken?: { response?: "YES" | "NO" | null; clickedAt?: string | null } | null;
 };
 
-type CampaignDetail = Campaign & {
-  contacts: Contact[];
-  messages: Message[];
-};
+type CampaignDetail = Campaign & { contacts: Contact[]; messages: Message[] };
 
-type Stats = {
-  sent: number;
-  failed: number;
-  pending: number;
-  yes: number;
-  no: number;
-};
+type Stats = { sent: number; failed: number; pending: number; yes: number; no: number };
 
 type WaStatus = {
   provider: "personal" | "meta";
-  personal: {
-    state: string;
-    qr: string | null;
-    error?: string | null;
-  };
-  meta: {
-    configured: boolean;
-    phoneNumberId: string;
-    graphVersion: string;
-    sendMode: string;
-    templateName: string;
-  };
+  personal: { state: string; qr: string | null; error?: string | null };
+  meta: { configured: boolean; phoneNumberId: string; graphVersion: string; sendMode: string; templateName: string };
 };
 
 const emptyStats: Stats = { sent: 0, failed: 0, pending: 0, yes: 0, no: 0 };
 
-function waStatusClass(state: string): string {
-  if (state === "ready") return "sent";
-  if (state === "disconnected" || state === "disabled" || state === "meta not configured") return "failed";
-  return "pending";
+function waBadgeClass(status: WaStatus): string {
+  if (status.provider === "meta") return status.meta.configured ? "badge badge-green" : "badge badge-red";
+  const s = status.personal.state;
+  if (s === "ready") return "badge badge-green";
+  if (s === "disconnected" || s === "disabled") return "badge badge-red";
+  return "badge badge-amber";
 }
 
-function currentWaState(status: WaStatus): string {
-  if (status.provider === "meta") return status.meta.configured ? "meta configured" : "meta not configured";
+function waLabel(status: WaStatus): string {
+  if (status.provider === "meta") return status.meta.configured ? "Meta configured" : "Meta not configured";
   return status.personal.state;
+}
+
+function msgBadgeClass(s: string): string {
+  if (s === "SENT") return "badge badge-green";
+  if (s === "FAILED") return "badge badge-red";
+  return "badge badge-amber";
 }
 
 export function Dashboard() {
@@ -129,7 +114,6 @@ export function Dashboard() {
       setTemplates(nextTemplates);
       setCampaigns(nextCampaigns);
       setWa(nextWa);
-
       if (!initialized.current) {
         initialized.current = true;
         const firstId = nextCampaigns[0]?.id ?? "";
@@ -138,9 +122,7 @@ export function Dashboard() {
           setCampaignDraft((c) => (c.templateId ? c : { ...c, templateId: nextTemplates[0].id }));
         }
       }
-    } catch {
-      // Polling failures are silent — avoid spamming the notice on transient network blips
-    }
+    } catch { /* silent */ }
   }
 
   async function loadCampaign(id: string) {
@@ -155,28 +137,25 @@ export function Dashboard() {
 
   useEffect(() => {
     void refresh();
-    const timer = window.setInterval(() => void refresh(), 5000);
-    return () => window.clearInterval(timer);
-  }, []);
+    const t = window.setInterval(() => void refresh(), 5000);
+    return () => window.clearInterval(t);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    void loadCampaign(selectedCampaignId);
-  }, [selectedCampaignId]);
+  useEffect(() => { void loadCampaign(selectedCampaignId); }, [selectedCampaignId]);
 
-  // Scroll-spy: highlight the nav link whose section is in the viewport centre
   useEffect(() => {
     const ids = ["campaign", "template", "contacts", "whatsapp"];
-    const observers = ids.map((id) => {
+    const obs = ids.map((id) => {
       const el = document.getElementById(id);
       if (!el) return null;
-      const obs = new IntersectionObserver(
-        ([entry]) => { if (entry.isIntersecting) setActiveSection(id); },
+      const o = new IntersectionObserver(
+        ([e]) => { if (e.isIntersecting) setActiveSection(id); },
         { rootMargin: "-20% 0px -70% 0px" },
       );
-      obs.observe(el);
-      return obs;
+      o.observe(el);
+      return o;
     });
-    return () => observers.forEach((o) => o?.disconnect());
+    return () => obs.forEach((o) => o?.disconnect());
   }, []);
 
   const preview = useMemo(() => {
@@ -189,8 +168,8 @@ export function Dashboard() {
       .replaceAll("{{rsvp_link}}", `${API_URL}/rsvp/example-token`);
   }, [campaign?.contacts, templateDraft.bodyEn]);
 
-  async function saveTemplate(event: FormEvent) {
-    event.preventDefault();
+  async function saveTemplate(e: FormEvent) {
+    e.preventDefault();
     setLoading("save-template");
     try {
       const saved = await apiPost<Template>("/api/templates", {
@@ -200,17 +179,15 @@ export function Dashboard() {
         mediaType: templateDraft.mediaType || null,
       });
       showNotice("Template saved.");
-      setTemplates((current) => [saved, ...current]);
-      setCampaignDraft((current) => ({ ...current, templateId: saved.id }));
+      setTemplates((c) => [saved, ...c]);
+      setCampaignDraft((c) => ({ ...c, templateId: saved.id }));
     } catch (err) {
       showNotice(err instanceof Error ? err.message : "Failed to save template.", "error");
-    } finally {
-      setLoading(null);
-    }
+    } finally { setLoading(null); }
   }
 
-  async function updateTemplate(event: FormEvent) {
-    event.preventDefault();
+  async function updateTemplate(e: FormEvent) {
+    e.preventDefault();
     if (!campaign?.template) return;
     setLoading("update-template");
     try {
@@ -221,77 +198,62 @@ export function Dashboard() {
         mediaUrl: templateDraft.mediaUrl || null,
         mediaType: templateDraft.mediaType || null,
       });
-      setTemplates((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      setTemplates((c) => c.map((t) => (t.id === updated.id ? updated : t)));
       showNotice("Template updated.");
     } catch (err) {
       showNotice(err instanceof Error ? err.message : "Failed to update template.", "error");
-    } finally {
-      setLoading(null);
-    }
+    } finally { setLoading(null); }
   }
 
-  async function createCampaign(event: FormEvent) {
-    event.preventDefault();
+  async function createCampaign(e: FormEvent) {
+    e.preventDefault();
     setLoading("create-campaign");
     try {
       const created = await apiPost<Campaign>("/api/campaigns", campaignDraft);
       showNotice("Campaign created.");
-      setCampaigns((current) => [created, ...current]);
+      setCampaigns((c) => [created, ...c]);
       setSelectedCampaignId(created.id);
     } catch (err) {
       showNotice(err instanceof Error ? err.message : "Failed to create campaign.", "error");
-    } finally {
-      setLoading(null);
-    }
+    } finally { setLoading(null); }
   }
 
-  async function uploadContacts(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function uploadContacts(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
     if (!campaign) return;
     setLoading("upload-contacts");
     try {
-      const file = new FormData(event.currentTarget);
-      await apiPost(`/api/campaigns/${campaign.id}/contacts`, file);
+      await apiPost(`/api/campaigns/${campaign.id}/contacts`, new FormData(e.currentTarget));
       showNotice("Contacts imported.");
       await loadCampaign(campaign.id);
     } catch (err) {
       showNotice(err instanceof Error ? err.message : "Failed to import contacts.", "error");
-    } finally {
-      setLoading(null);
-    }
+    } finally { setLoading(null); }
   }
 
-  async function importGoogleSheet(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function importGoogleSheet(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
     if (!campaign) return;
     setLoading("google-sheet");
     try {
-      const result = await apiPost<{ imported: number; totalCount: number }>(
-        `/api/campaigns/${campaign.id}/contacts/google-sheet`,
-        { url: sheetUrl },
-      );
-      showNotice(`Imported ${result.imported} contact${result.imported === 1 ? "" : "s"} from Google Sheets.`);
+      const result = await apiPost<{ imported: number }>(`/api/campaigns/${campaign.id}/contacts/google-sheet`, { url: sheetUrl });
+      showNotice(`Imported ${result.imported} contacts from Google Sheets.`);
       await loadCampaign(campaign.id);
     } catch (err) {
       showNotice(err instanceof Error ? err.message : "Failed to import Google Sheet.", "error");
-    } finally {
-      setLoading(null);
-    }
+    } finally { setLoading(null); }
   }
 
-  async function uploadMedia(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function uploadMedia(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
     setLoading("upload-media");
     try {
-      const data = new FormData(event.currentTarget);
-      const media = await apiPost<{ url: string; type: string }>("/api/media", data);
-      setTemplateDraft((current) => ({ ...current, mediaUrl: media.url, mediaType: media.type }));
+      const media = await apiPost<{ url: string; type: string }>("/api/media", new FormData(e.currentTarget));
+      setTemplateDraft((c) => ({ ...c, mediaUrl: media.url, mediaType: media.type }));
       showNotice("Media uploaded.");
     } catch (err) {
       showNotice(err instanceof Error ? err.message : "Failed to upload media.", "error");
-    } finally {
-      setLoading(null);
-    }
+    } finally { setLoading(null); }
   }
 
   async function prepareCampaign() {
@@ -303,9 +265,7 @@ export function Dashboard() {
       await loadCampaign(campaign.id);
     } catch (err) {
       showNotice(err instanceof Error ? err.message : "Failed to prepare messages.", "error");
-    } finally {
-      setLoading(null);
-    }
+    } finally { setLoading(null); }
   }
 
   async function sendCampaign() {
@@ -319,9 +279,7 @@ export function Dashboard() {
       await loadCampaign(campaign.id);
     } catch (err) {
       showNotice(err instanceof Error ? err.message : "Failed to start sending.", "error");
-    } finally {
-      setLoading(null);
-    }
+    } finally { setLoading(null); }
   }
 
   async function startWhatsApp() {
@@ -332,239 +290,253 @@ export function Dashboard() {
       showNotice("WhatsApp session starting.");
     } catch (err) {
       showNotice(err instanceof Error ? err.message : "Failed to start WhatsApp.", "error");
-    } finally {
-      setLoading(null);
-    }
+    } finally { setLoading(null); }
   }
 
   const isSaving = loading === "save-template" || loading === "update-template";
-  const waState = currentWaState(wa);
 
   return (
     <div className="shell">
-      <div className="app-frame">
-        <aside className="sidebar">
-          <div className="brand">
-            <div className="brand-mark">HS</div>
+      {/* ── Sidebar ── */}
+      <aside className="sidebar">
+        <div className="sidebar-brand">
+          <div className="brand-mark">HS</div>
+          <div className="sidebar-brand-text">
             <strong>Hamza & Shouq</strong>
-            <span className="muted">WhatsApp campaign system</span>
+            <span>Campaign dashboard</span>
           </div>
-          <nav className="nav" aria-label="Dashboard navigation">
-            <a href="#campaign" className={activeSection === "campaign" ? "active" : ""}>Campaign</a>
-            <a href="#template" className={activeSection === "template" ? "active" : ""}>Template</a>
-            <a href="#contacts" className={activeSection === "contacts" ? "active" : ""}>Contacts</a>
-            <a href="#whatsapp" className={activeSection === "whatsapp" ? "active" : ""}>WhatsApp</a>
-          </nav>
-          <div style={{ marginTop: 28 }}>
-            <p className="muted">Backend</p>
-            <strong>{API_URL}</strong>
+        </div>
+
+        <nav className="sidebar-nav" aria-label="Dashboard navigation">
+          <span className="nav-label">Menu</span>
+
+          <NavLink href="#campaign" active={activeSection === "campaign"} icon={
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="nav-icon">
+              <rect x="1" y="1" width="6" height="6" rx="1.5" /><rect x="9" y="1" width="6" height="6" rx="1.5" />
+              <rect x="1" y="9" width="6" height="6" rx="1.5" /><rect x="9" y="9" width="6" height="6" rx="1.5" />
+            </svg>
+          }>Campaign</NavLink>
+
+          <NavLink href="#template" active={activeSection === "template"} icon={
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="nav-icon">
+              <rect x="1" y="1" width="14" height="10" rx="1.5" />
+              <path d="M4 14h8M8 11v3" strokeLinecap="round" />
+            </svg>
+          }>Template</NavLink>
+
+          <NavLink href="#contacts" active={activeSection === "contacts"} icon={
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="nav-icon">
+              <circle cx="6" cy="5" r="3" /><path d="M1 14c0-3 2-5 5-5s5 2 5 5" strokeLinecap="round" />
+              <path d="M11 7l3 3M14 7l-3 3" strokeLinecap="round" />
+            </svg>
+          }>Contacts</NavLink>
+
+          <NavLink href="#whatsapp" active={activeSection === "whatsapp"} icon={
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="nav-icon">
+              <circle cx="8" cy="8" r="6.5" />
+              <path d="M5.5 9.5c.5 1 1.5 2 2.5 2 2.5 0 3.5-2 3.5-3.5S10 4 8 4 5 5.5 5 7.5c0 .7.2 1.3.5 1.8L4.5 12l1.5-.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          }>WhatsApp</NavLink>
+        </nav>
+
+        <div className="sidebar-footer">
+          <span className="sidebar-footer-label">API</span>
+          <span className="sidebar-footer-value">{API_URL}</span>
+        </div>
+      </aside>
+
+      {/* ── Main ── */}
+      <main className="main">
+        <div className="page-header">
+          <div>
+            <h1 className="page-title">Invitations</h1>
+            <p className="page-sub">WhatsApp campaign &amp; RSVP tracking for Hamza &amp; Shouq</p>
           </div>
-        </aside>
+          <span className={waBadgeClass(wa)}>{waLabel(wa)}</span>
+        </div>
 
-        <main className="main">
-          <section className="hero">
-            <h1>Personal WhatsApp invitations with RSVP tracking.</h1>
-            <p>
-              Upload contacts, personalize messages, attach media, scan a QR code, send carefully, and track responses
-              from one focused dashboard.
-            </p>
-          </section>
-
-          {/* Hidden live region announces notices to screen readers */}
+        <div className="content">
+          {/* Notice */}
           <div aria-live="polite" aria-atomic="true" className="sr-only">{notice}</div>
-
-          {notice ? (
+          {notice && (
             <div className={`notice${noticeType === "error" ? " error" : ""}`} role="status">
-              {notice}
+              {noticeType === "error" ? "⚠ " : "✓ "}{notice}
             </div>
-          ) : null}
+          )}
 
-          <section className="grid stats" aria-label="Campaign stats">
-            <Stat label="Sent" value={stats.sent} color="green" />
-            <Stat label="Failed" value={stats.failed} color="red" />
-            <Stat label="RSVP Yes" value={stats.yes} color="green" />
-            <Stat label="RSVP No" value={stats.no} color="amber" />
-            <Stat label="Pending" value={stats.pending} />
+          {/* Stats */}
+          <section className="stats-row" aria-label="Campaign stats">
+            <StatCard label="Sent"     value={stats.sent}    color="green" />
+            <StatCard label="Failed"   value={stats.failed}  color="red" />
+            <StatCard label="RSVP Yes" value={stats.yes}     color="green" />
+            <StatCard label="RSVP No"  value={stats.no}      color="amber" />
+            <StatCard label="Pending"  value={stats.pending} />
           </section>
 
-          <section id="campaign" className="grid two-col">
-            <div className="panel">
-              <h2>Campaign</h2>
-              <form className="grid" onSubmit={createCampaign}>
+          {/* Campaign */}
+          <section id="campaign" className="two-col">
+            <div className="card">
+              <p className="card-title">New Campaign</p>
+              <form className="form-stack" onSubmit={createCampaign}>
                 <Field label="Campaign name" required>
-                  <input
-                    className="input"
-                    value={campaignDraft.name}
-                    required
-                    onChange={(event) => setCampaignDraft((current) => ({ ...current, name: event.target.value }))}
-                  />
+                  <input className="input" value={campaignDraft.name} required
+                    onChange={(e) => setCampaignDraft((c) => ({ ...c, name: e.target.value }))} />
                 </Field>
                 <Field label="Template" required>
-                  <select
-                    className="select"
-                    value={campaignDraft.templateId}
-                    required
-                    onChange={(event) => setCampaignDraft((current) => ({ ...current, templateId: event.target.value }))}
-                  >
-                    <option value="">Select template</option>
-                    {templates.map((template) => (
-                      <option key={template.id} value={template.id}>
-                        {template.name}
-                      </option>
-                    ))}
+                  <select className="select" value={campaignDraft.templateId} required
+                    onChange={(e) => setCampaignDraft((c) => ({ ...c, templateId: e.target.value }))}>
+                    <option value="">Select a template</option>
+                    {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>
                 </Field>
-                <button className="btn" type="submit" disabled={loading === "create-campaign"}>
+                <button className="btn btn-full" type="submit" disabled={loading === "create-campaign"}>
                   {loading === "create-campaign" ? "Creating…" : "Create campaign"}
                 </button>
               </form>
             </div>
 
-            <div className="panel">
-              <h2>Active campaign</h2>
-              <Field label="Select">
-                <select
-                  className="select"
-                  value={selectedCampaignId}
-                  onChange={(event) => setSelectedCampaignId(event.target.value)}
-                >
-                  <option value="">No campaign</option>
-                  {campaigns.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <div className="grid" style={{ marginTop: 16 }}>
-                <button
-                  className="btn"
-                  type="button"
-                  onClick={prepareCampaign}
-                  disabled={!campaign || loading === "prepare"}
-                >
-                  {loading === "prepare" ? "Preparing…" : "Prepare messages"}
-                </button>
-                <button
-                  className="btn primary"
-                  type="button"
-                  onClick={sendCampaign}
-                  disabled={!campaign || loading === "send"}
-                >
-                  {loading === "send" ? "Sending…" : "Start sending"}
-                </button>
+            <div className="card">
+              <p className="card-title">Active Campaign</p>
+              <div className="form-stack">
+                <Field label="Select campaign">
+                  <select className="select" value={selectedCampaignId}
+                    onChange={(e) => setSelectedCampaignId(e.target.value)}>
+                    <option value="">No campaign selected</option>
+                    {campaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </Field>
+                {campaign && (
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <span className={`badge ${campaignStatusBadge(campaign.status)}`}>{campaign.status}</span>
+                    <span className="text-subtle">{campaign.totalCount} contacts</span>
+                  </div>
+                )}
+                <hr className="card-divider" style={{ margin: "4px -24px" }} />
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button className="btn" style={{ flex: 1 }} type="button"
+                    onClick={prepareCampaign} disabled={!campaign || loading === "prepare"}>
+                    {loading === "prepare" ? "Preparing…" : "Prepare"}
+                  </button>
+                  <button className="btn btn-primary" style={{ flex: 1 }} type="button"
+                    onClick={sendCampaign} disabled={!campaign || loading === "send"}>
+                    {loading === "send" ? "Sending…" : "Send"}
+                  </button>
+                </div>
               </div>
             </div>
           </section>
 
-          <section id="template" className="grid two-col">
-            <form className="panel grid" onSubmit={campaign?.template ? updateTemplate : saveTemplate}>
-              <h2>Template editor</h2>
+          {/* Template */}
+          <section id="template" className="two-col">
+            <form className="card form-stack" onSubmit={campaign?.template ? updateTemplate : saveTemplate}>
+              <p className="card-title">Template Editor</p>
               <Field label="Template name" required>
-                <input
-                  className="input"
-                  value={templateDraft.name}
-                  required
-                  onChange={(event) => setTemplateDraft((current) => ({ ...current, name: event.target.value }))}
-                />
+                <input className="input" value={templateDraft.name} required
+                  onChange={(e) => setTemplateDraft((c) => ({ ...c, name: e.target.value }))} />
               </Field>
               <Field label="English body" required>
-                <textarea
-                  className="textarea"
-                  value={templateDraft.bodyEn}
-                  required
-                  onChange={(event) => setTemplateDraft((current) => ({ ...current, bodyEn: event.target.value }))}
-                />
+                <textarea className="textarea" value={templateDraft.bodyEn} required
+                  onChange={(e) => setTemplateDraft((c) => ({ ...c, bodyEn: e.target.value }))} />
               </Field>
               <Field label="Arabic body (optional)">
-                <textarea
-                  className="textarea"
-                  dir="rtl"
-                  placeholder="اكتب هنا..."
-                  value={templateDraft.bodyAr}
-                  onChange={(event) => setTemplateDraft((current) => ({ ...current, bodyAr: event.target.value }))}
-                />
+                <textarea className="textarea" dir="rtl" placeholder="اكتب هنا..." value={templateDraft.bodyAr}
+                  onChange={(e) => setTemplateDraft((c) => ({ ...c, bodyAr: e.target.value }))} />
               </Field>
-              <button className="btn primary" type="submit" disabled={isSaving}>
-                {isSaving ? "Saving…" : "Save template"}
+              <button className="btn btn-primary btn-full" type="submit" disabled={isSaving}>
+                {isSaving ? "Saving…" : (campaign?.template ? "Update template" : "Save template")}
               </button>
             </form>
 
-            <div className="panel grid">
-              <h2>Preview</h2>
-              <p className="muted">Available placeholders: {"{{name}}"}, {"{{phone}}"}, spreadsheet columns, {"{{rsvp_link}}"}</p>
-              <div className="card">{preview}</div>
-              <form className="grid" onSubmit={uploadMedia}>
-                <Field label="Media (image, video, PDF, audio)">
+            <div className="card form-stack">
+              <p className="card-title">Preview</p>
+              <p className="text-subtle" style={{ marginTop: -8 }}>
+                Placeholders: <code>{"{{name}}"}</code> <code>{"{{date}}"}</code> <code>{"{{venue}}"}</code> <code>{"{{rsvp_link}}"}</code>
+              </p>
+              <div className="preview-box">{preview}</div>
+              <hr className="card-divider" />
+              <form className="form-stack" onSubmit={uploadMedia}>
+                <Field label="Attach media (image, video, PDF)">
                   <input className="input" name="file" type="file" />
                 </Field>
-                <button className="btn" type="submit" disabled={loading === "upload-media"}>
-                  {loading === "upload-media" ? "Uploading…" : "Upload media"}
-                </button>
-                {templateDraft.mediaUrl ? <span className="status sent">Media attached</span> : null}
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <button className="btn" type="submit" disabled={loading === "upload-media"}>
+                    {loading === "upload-media" ? "Uploading…" : "Upload media"}
+                  </button>
+                  {templateDraft.mediaUrl && <span className="badge badge-green">Media attached</span>}
+                </div>
               </form>
             </div>
           </section>
 
-          <section id="contacts" className="panel">
-            <h2>Contacts</h2>
-            <form className="grid" onSubmit={importGoogleSheet} style={{ marginBottom: 16 }}>
-              <Field label="Google Sheet URL">
-                <input
-                  className="input"
-                  value={sheetUrl}
-                  onChange={(event) => setSheetUrl(event.target.value)}
-                  placeholder="https://docs.google.com/spreadsheets/d/..."
-                />
-              </Field>
-              <button
-                className="btn primary"
-                type="submit"
-                disabled={!campaign || loading === "google-sheet"}
-              >
-                {loading === "google-sheet" ? "Importing..." : "Import Google Sheet"}
-              </button>
-            </form>
-            <form className="grid" onSubmit={uploadContacts}>
-              <Field label="Spreadsheet (.xlsx or .csv)">
-                <input className="input" name="file" type="file" accept=".xlsx,.csv" />
-              </Field>
-              <button
-                className="btn primary"
-                type="submit"
-                disabled={!campaign || loading === "upload-contacts"}
-              >
-                {loading === "upload-contacts" ? "Importing…" : "Import contacts"}
-              </button>
-            </form>
+          {/* Contacts */}
+          <section id="contacts" className="two-col">
+            <div className="card form-stack">
+              <p className="card-title">Import from Spreadsheet</p>
+              <form className="form-stack" onSubmit={uploadContacts}>
+                <Field label="Upload .xlsx or .csv">
+                  <input className="input" name="file" type="file" accept=".xlsx,.csv" />
+                </Field>
+                <button className="btn btn-primary btn-full" type="submit"
+                  disabled={!campaign || loading === "upload-contacts"}>
+                  {loading === "upload-contacts" ? "Importing…" : "Import contacts"}
+                </button>
+              </form>
+            </div>
+
+            <div className="card form-stack">
+              <p className="card-title">Import from Google Sheets</p>
+              <form className="form-stack" onSubmit={importGoogleSheet}>
+                <Field label="Google Sheet URL">
+                  <input className="input" value={sheetUrl} onChange={(e) => setSheetUrl(e.target.value)} />
+                </Field>
+                <button className="btn btn-full" type="submit"
+                  disabled={!campaign || loading === "google-sheet"}>
+                  {loading === "google-sheet" ? "Importing…" : "Import Google Sheet"}
+                </button>
+              </form>
+            </div>
           </section>
 
-          <section id="whatsapp" className="grid two-col">
-            <div className="panel">
-              <h2>WhatsApp session</h2>
-              <p className={`status ${waStatusClass(waState)}`}>{waState}</p>
-              <button
-                className="btn"
-                type="button"
-                onClick={startWhatsApp}
-                disabled={wa.provider !== "personal" || loading === "whatsapp"}
-              >
-                {loading === "whatsapp" ? "Starting…" : "Start WhatsApp session"}
+          {/* WhatsApp */}
+          <section id="whatsapp" className="two-col">
+            <div className="card form-stack">
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <p className="card-title" style={{ marginBottom: 0 }}>WhatsApp Session</p>
+                <span className={waBadgeClass(wa)}>{waLabel(wa)}</span>
+              </div>
+              <button className="btn btn-full" type="button"
+                onClick={startWhatsApp} disabled={loading === "whatsapp"}>
+                {loading === "whatsapp" ? "Starting…" : "Start session"}
               </button>
               {wa.personal.qr ? (
-                <img className="qr" src={wa.personal.qr} alt="WhatsApp login QR code" />
+                <div className="qr-wrap">
+                  <img className="qr" src={wa.personal.qr} alt="Scan this QR code in WhatsApp to log in" />
+                  <p className="qr-hint">Open WhatsApp → Linked Devices → Link a Device, then scan this code.</p>
+                </div>
               ) : (
-                <p className="muted">{wa.personal.error ?? "QR appears when the backend needs login."}</p>
+                <p className="text-subtle">QR code appears here when WhatsApp needs login.</p>
               )}
             </div>
-            <div className="panel">
-              <h2>Send rules</h2>
-              <p className="muted">Use known contacts only. Keep daily sends low. The backend sends sequentially with a delay to reduce ban risk.</p>
+
+            <div className="card">
+              <p className="card-title">Send Rules</p>
+              <div className="form-stack">
+                <Rule icon="🕐" text="Sequential sending with 4s delay between messages" />
+                <Rule icon="👥" text="Send only to contacts who know you — avoid cold outreach" />
+                <Rule icon="📊" text="Keep daily volume under 100 to reduce ban risk" />
+                <Rule icon="✅" text="Prepare messages first, then review before sending" />
+              </div>
             </div>
           </section>
 
-          <section className="panel">
-            <h2>Message table</h2>
+          {/* Message table */}
+          <section className="card">
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+              <p className="card-title" style={{ marginBottom: 0 }}>Messages</p>
+              {campaign?.messages?.length ? (
+                <span className="text-subtle">{campaign.messages.length} messages</span>
+              ) : null}
+            </div>
             <div className="table-wrap">
               <table className="table">
                 <thead>
@@ -577,24 +549,22 @@ export function Dashboard() {
                 </thead>
                 <tbody>
                   {campaign?.messages?.length ? (
-                    campaign.messages.map((message) => (
-                      <tr key={message.id}>
-                        <td>{message.contact.name}</td>
-                        <td>{message.contact.phone}</td>
+                    campaign.messages.map((msg) => (
+                      <tr key={msg.id}>
+                        <td style={{ fontWeight: 500 }}>{msg.contact.name}</td>
+                        <td className="text-muted" style={{ fontVariantNumeric: "tabular-nums" }}>{msg.contact.phone}</td>
+                        <td><span className={msgBadgeClass(msg.status)}>{msg.status}</span></td>
                         <td>
-                          <span className={`status ${message.status.toLowerCase()}`}>
-                            {message.status}
-                          </span>
+                          {msg.rsvpToken?.response
+                            ? <span className={`badge ${msg.rsvpToken.response === "YES" ? "badge-green" : "badge-red"}`}>{msg.rsvpToken.response}</span>
+                            : <span className="text-subtle">—</span>}
                         </td>
-                        <td>{message.rsvpToken?.response ?? "—"}</td>
                       </tr>
                     ))
                   ) : (
                     <tr>
                       <td colSpan={4} className="table-empty">
-                        {campaign
-                          ? "No messages yet — click Prepare messages above."
-                          : "Select a campaign to view messages."}
+                        {campaign ? "No messages yet — click Prepare above." : "Select a campaign to view messages."}
                       </td>
                     </tr>
                   )}
@@ -602,31 +572,55 @@ export function Dashboard() {
               </table>
             </div>
           </section>
-        </main>
-      </div>
+        </div>
+      </main>
     </div>
   );
 }
 
-function Stat({ label, value, color }: { label: string; value: number; color?: "green" | "red" | "amber" }) {
+/* ── Sub-components ── */
+
+function NavLink({ href, active, icon, children }: { href: string; active: boolean; icon: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div className={`card stat-card${color ? ` ${color}` : ""}`}>
-      <span className="muted">{label}</span>
+    <a href={href} className={`nav-link${active ? " active" : ""}`}>
+      {icon}
+      {children}
+    </a>
+  );
+}
+
+function StatCard({ label, value, color }: { label: string; value: number; color?: "green" | "red" | "amber" }) {
+  return (
+    <div className={`stat-card${color ? ` ${color}` : ""}`}>
+      <div className="stat-label">{label}</div>
       <div className="stat-value">{value}</div>
     </div>
   );
 }
 
-function Field({ label, children, required }: { label: string; children: React.ReactNode; required?: boolean }) {
+function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (
-    <label className="field">
-      <span>
-        {label}
-        {required ? (
-          <span aria-hidden="true" style={{ color: "var(--red)", marginLeft: 3 }}>*</span>
-        ) : null}
-      </span>
+    <div className="field">
+      <label className="field-label">
+        {label}{required && <span className="req" aria-hidden="true">*</span>}
+      </label>
       {children}
-    </label>
+    </div>
   );
+}
+
+function Rule({ icon, text }: { icon: string; text: string }) {
+  return (
+    <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+      <span style={{ fontSize: 14, lineHeight: 1.6, flexShrink: 0 }}>{icon}</span>
+      <span className="text-subtle" style={{ lineHeight: 1.6 }}>{text}</span>
+    </div>
+  );
+}
+
+function campaignStatusBadge(status: string): string {
+  if (status === "SENT") return "badge-green";
+  if (status === "SENDING") return "badge-amber";
+  if (status === "FAILED") return "badge-red";
+  return "badge-gray";
 }

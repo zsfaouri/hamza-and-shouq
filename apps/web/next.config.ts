@@ -6,6 +6,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const nextConfig: NextConfig = {
   outputFileTracingRoot: process.env.VERCEL ? undefined : join(__dirname, "../.."),
+  serverExternalPackages: ["whatsapp-web.js"],
 };
 
 export default nextConfig;

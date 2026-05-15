@@ -1,4 +1,5 @@
 import https from "node:https";
+import { initPersonalWhatsApp, personalWhatsAppStatus } from "@/lib/personal-whatsapp";
 
 type Template = {
   id: string;
@@ -245,11 +246,7 @@ export function metaStatus() {
 export async function personalStatus() {
   const backendUrl = settings().personalBackendUrl.trim().replace(/\/$/, "");
   if (!backendUrl) {
-    return {
-      state: "needs-backend",
-      qr: null,
-      error: "Set a persistent Personal WhatsApp backend URL to generate QR codes.",
-    };
+    return personalWhatsAppStatus();
   }
 
   try {
@@ -270,11 +267,8 @@ export async function personalStatus() {
 export async function startPersonalSession() {
   const backendUrl = settings().personalBackendUrl.trim().replace(/\/$/, "");
   if (!backendUrl) {
-    return {
-      state: "needs-backend",
-      qr: null,
-      error: "Set a persistent Personal WhatsApp backend URL to generate QR codes.",
-    };
+    await initPersonalWhatsApp();
+    return personalWhatsAppStatus();
   }
 
   const response = await fetch(`${backendUrl}/api/whatsapp/start`, { method: "POST", cache: "no-store" });

@@ -3,6 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 import type { FormEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { SessionUser } from "@/lib/access-control";
 import { API_URL, apiGet, apiPost, apiPut } from "@/lib/api";
 
 /* ── Types ─────────────────────────────────────────────────── */
@@ -30,7 +31,7 @@ function preserveQr(cur: WaStatus, next: WaStatus): WaStatus {
 }
 
 /* ── Dashboard ──────────────────────────────────────────────── */
-export function Dashboard() {
+export function Dashboard({ initialUser }: { initialUser: SessionUser }) {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [selId, setSelId]         = useState("");
@@ -43,6 +44,7 @@ export function Dashboard() {
   const [loading, setLoading]     = useState<string | null>(null);
   const [active, setActive]       = useState("campaign");
   const [sheetUrl, setSheetUrl]   = useState("https://docs.google.com/spreadsheets/d/1021Z6KyT-dF97FVJAG3c4Nr6thASDpuhPu-hFC_fTA0/edit?usp=sharing");
+  const permissions = initialUser.permissions;
 
   const [tmpl, setTmpl] = useState({
     name: "Wedding Invite EN",
@@ -88,7 +90,7 @@ export function Dashboard() {
   useEffect(() => { void refresh(); const t = window.setInterval(() => void refresh(), 5000); return () => window.clearInterval(t); }, []);
   useEffect(() => { void loadCampaign(selId); }, [selId]);
   useEffect(() => {
-    const ids = ["campaign", "template", "contacts", "whatsapp", "access"];
+    const ids = ["campaign", "template", "contacts", "whatsapp"];
     const obs = ids.map((id) => {
       const el = document.getElementById(id); if (!el) return null;
       const o = new IntersectionObserver(([e]) => { if (e.isIntersecting) setActive(id); }, { rootMargin: "-20% 0px -70% 0px" });
@@ -117,6 +119,7 @@ export function Dashboard() {
   const onSend        = () => { if (!campaign) return; const n = campaign.contacts.length; if (!window.confirm(`Send to ${n} contact${n !== 1 ? "s" : ""}? This cannot be undone.`)) return; run("send", async () => { await apiPost(`/api/campaigns/${campaign.id}/send`); notify("Sending started."); await loadCampaign(campaign.id); }); };
   const onStartWa     = () => run("wa", async () => { const w = await apiPost<WaStatus>("/api/whatsapp/start"); setWa((c) => preserveQr(c, w)); notify(w.personal.qr ? "WhatsApp QR generated." : "WhatsApp session starting."); });
   const onSaveWaSet   = (e: FormEvent) => { e.preventDefault(); run("wa-set", async () => { await apiPut("/api/settings", waSet); const w = await apiGet<WaStatus>("/api/whatsapp/status"); setWa((c) => preserveQr(c, w)); notify("Settings saved."); }); };
+  const onLogout      = () => run("logout", async () => { await apiPost("/api/auth/logout"); window.location.href = "/login"; });
 
   return (
     <div className="app">
@@ -139,7 +142,7 @@ export function Dashboard() {
           <NavItem href="#template" on={active === "template"} icon={<IconTemplate />}>Template</NavItem>
           <NavItem href="#contacts" on={active === "contacts"} icon={<IconContacts />}>Contacts</NavItem>
           <NavItem href="#whatsapp" on={active === "whatsapp"} icon={<IconWa />}>WhatsApp</NavItem>
-          <NavItem href="#access" on={active === "access"} icon={<IconAccess />}>Access</NavItem>
+          {permissions.canManageAccess && <NavItem href="/access" on={false} icon={<IconAccess />}>Access</NavItem>}
         </nav>
 
         <div className="s-footer">
@@ -157,7 +160,11 @@ export function Dashboard() {
             <span className="topbar-title">Invitations</span>
             <span className="topbar-sub">Hamza &amp; Shouq · Wedding 2026</span>
           </div>
-          <span className={waBadge(wa)}>{waLabel(wa)}</span>
+          <div className="topbar-actions">
+            <span className="badge b-x">{initialUser.name}</span>
+            <span className={waBadge(wa)}>{waLabel(wa)}</span>
+            <button className="btn btn-sm" onClick={onLogout}>Logout</button>
+          </div>
         </header>
 
         <div className="content">
@@ -177,7 +184,7 @@ export function Dashboard() {
 
           {/* ── Campaign ── */}
           <section id="campaign" className="two">
-            <div className="card">
+            {permissions.canManageCampaigns ? <div className="card">
               <div className="card-head">
                 <span className="card-title">New Campaign</span>
               </div>
@@ -197,7 +204,7 @@ export function Dashboard() {
                   </button>
                 </form>
               </div>
-            </div>
+            </div> : <AccessSummary user={initialUser} />}
 
             <div className="card">
               <div className="card-head">
@@ -216,21 +223,23 @@ export function Dashboard() {
                     {campaign.totalCount} contacts · {campaign.sentCount} sent · {campaign.failedCount} failed
                   </p>
                 )}
+                {(permissions.canPrepareMessages || permissions.canSendMessages) && (
                 <div className="btn-row" style={{ marginTop: 4 }}>
-                  <button className="btn" style={{ flex: 1 }} onClick={onPrepare} disabled={!campaign || loading === "prepare"}>
+                  {permissions.canPrepareMessages && <button className="btn" style={{ flex: 1 }} onClick={onPrepare} disabled={!campaign || loading === "prepare"}>
                     {loading === "prepare" ? "Preparing…" : "Prepare"}
-                  </button>
-                  <button className="btn btn-p" style={{ flex: 1 }} onClick={onSend} disabled={!campaign || loading === "send"}>
+                  </button>}
+                  {permissions.canSendMessages && <button className="btn btn-p" style={{ flex: 1 }} onClick={onSend} disabled={!campaign || loading === "send"}>
                     {loading === "send" ? "Sending…" : "Send"}
-                  </button>
+                  </button>}
                 </div>
+                )}
               </div>
             </div>
           </section>
 
           {/* ── Template ── */}
           <section id="template" className="two">
-            <form className="card" onSubmit={campaign?.template ? onUpdateTmpl : onSaveTmpl}>
+            {permissions.canEditTemplates ? <form className="card" onSubmit={campaign?.template ? onUpdateTmpl : onSaveTmpl}>
               <div className="card-head">
                 <span className="card-title">Template Editor</span>
               </div>
@@ -248,7 +257,10 @@ export function Dashboard() {
                   {loading === "tmpl" ? "Saving…" : (campaign?.template ? "Update Template" : "Save Template")}
                 </button>
               </div>
-            </form>
+            </form> : <div className="card">
+              <div className="card-head"><span className="card-title">Template</span><span className="badge b-x">Read only</span></div>
+              <div className="card-body"><div className="preview">{campaign?.template?.bodyEn ?? tmpl.bodyEn}</div></div>
+            </div>}
 
             <div className="card">
               <div className="card-head">
@@ -257,7 +269,7 @@ export function Dashboard() {
               </div>
               <div className="card-body">
                 <div className="preview">{preview}</div>
-                <hr className="divider" />
+                {permissions.canEditTemplates && <><hr className="divider" />
                 <form style={{ display: "flex", flexDirection: "column", gap: 12 }} onSubmit={onMedia}>
                   <Field label="Attach media (image · video · PDF)">
                     <input className="input" name="file" type="file" />
@@ -268,14 +280,14 @@ export function Dashboard() {
                     </button>
                     {tmpl.mediaUrl && <span className="badge b-g">Media attached</span>}
                   </div>
-                </form>
+                </form></>}
               </div>
             </div>
           </section>
 
           {/* ── Contacts ── */}
           <section id="contacts" className="two">
-            <div className="card">
+            {permissions.canImportContacts ? <div className="card">
               <div className="card-head"><span className="card-title">Spreadsheet Import</span></div>
               <div className="card-body">
                 <form style={{ display: "flex", flexDirection: "column", gap: 12 }} onSubmit={onContacts}>
@@ -287,15 +299,18 @@ export function Dashboard() {
                   </button>
                 </form>
               </div>
-            </div>
+            </div> : <div className="card">
+              <div className="card-head"><span className="card-title">Spreadsheet Import</span><span className="badge b-x">Read only</span></div>
+              <div className="card-body"><p style={{ fontSize: 13, color: "var(--label-3)" }}>Import controls are blocked for this role.</p></div>
+            </div>}
 
-            <SheetImporter
+            {permissions.canImportContacts && <SheetImporter
               campaignId={campaign?.id ?? null}
               defaultUrl={sheetUrl}
               onUrlChange={setSheetUrl}
               onImported={() => campaign && loadCampaign(campaign.id)}
               notify={notify}
-            />
+            />}
           </section>
 
           {/* ── WhatsApp ── */}
@@ -306,9 +321,9 @@ export function Dashboard() {
                 <span className={waBadge(wa)}>{waLabel(wa)}</span>
               </div>
               <div className="card-body">
-                <button className="btn btn-w" onClick={onStartWa} disabled={loading === "wa"}>
+                {permissions.canManageWhatsApp && <button className="btn btn-w" onClick={onStartWa} disabled={loading === "wa"}>
                   {loading === "wa" ? "Starting…" : "Start Session"}
-                </button>
+                </button>}
                 {wa.personal.qr ? (
                   <div className="qr-box">
                     <img src={wa.personal.qr} alt="Scan in WhatsApp to log in" />
@@ -322,7 +337,7 @@ export function Dashboard() {
               </div>
             </div>
 
-            <div className="card">
+            {permissions.canManageWhatsApp && <div className="card">
               <div className="card-head"><span className="card-title">Settings &amp; Send Rules</span></div>
               <div className="card-body">
                 <form style={{ display: "flex", flexDirection: "column", gap: 12 }} onSubmit={onSaveWaSet}>
@@ -347,14 +362,16 @@ export function Dashboard() {
                   </div>
                 ))}
               </div>
-            </div>
+            </div>}
+            {!permissions.canManageWhatsApp && <div className="card">
+              <div className="card-head"><span className="card-title">WhatsApp Settings</span><span className="badge b-x">Read only</span></div>
+              <div className="card-body">
+                <p style={{ fontSize: 13, color: "var(--label-3)" }}>Provider: {waSet.provider}. Settings changes are restricted to Admin.</p>
+              </div>
+            </div>}
           </section>
 
           {/* ── Messages table with sourceTab filter ── */}
-          <section id="access" className="access-shell">
-            <AccessPanel />
-          </section>
-
           <MessagesTable campaign={campaign} />
 
         </div>
@@ -388,7 +405,7 @@ function Field({ label, req, children }: { label: string; req?: boolean; childre
 }
 
 /* ── SheetImporter ───────────────────────────────────────────── */
-function AccessPanel() {
+function AccessSummary({ user }: { user: SessionUser }) {
   const roles = [
     { name: "Owner", access: "Full system access", users: "Zaid" },
     { name: "Admin", access: "Campaigns, contacts, templates, WhatsApp settings", users: "Hamza, Shouq" },
@@ -406,10 +423,13 @@ function AccessPanel() {
   return (
     <div className="card">
       <div className="card-head">
-        <span className="card-title">Roles &amp; Access</span>
-        <span className="badge b-g">Visible</span>
+        <span className="card-title">Your Access</span>
+        <span className="badge b-x">{user.role}</span>
       </div>
       <div className="card-body">
+        <p style={{ fontSize: 13, color: "var(--label-3)" }}>
+          {user.name} can view {user.permissions.canViewAll ? "all lists" : user.allowedTabs.join(", ")}.
+        </p>
         <div className="access-grid">
           {roles.map((role) => (
             <div className="access-role" key={role.name}>

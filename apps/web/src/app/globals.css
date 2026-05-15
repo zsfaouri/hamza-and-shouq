@@ -539,6 +539,131 @@ code {
   color: var(--label-3);
 }
 
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.login-page,
+.access-page {
+  min-height: 100vh;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.login-page {
+  align-items: center;
+  justify-content: center;
+}
+
+.login-card {
+  width: min(440px, 100%);
+  background: var(--bg-elevated);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-md);
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.login-brand img {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  border: 1px solid var(--sep);
+  border-radius: var(--r-sm);
+}
+
+.login-brand h1,
+.access-top h1 {
+  font-size: 22px;
+  font-weight: 750;
+  letter-spacing: -0.4px;
+}
+
+.login-brand p,
+.access-top p {
+  font-size: 13px;
+  color: var(--label-3);
+}
+
+.login-users {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.access-page {
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+.access-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.access-users {
+  display: flex;
+  flex-direction: column;
+}
+
+.access-user-row {
+  display: grid;
+  grid-template-columns: 180px minmax(170px, 220px) 90px 1fr;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 18px;
+  border-top: 1px solid var(--sep);
+}
+
+.access-user-row:first-child {
+  border-top: none;
+}
+
+.access-user-row strong,
+.access-user-row span {
+  display: block;
+}
+
+.access-user-row span {
+  color: var(--label-3);
+  font-size: 12.5px;
+}
+
+.access-active,
+.access-list-checks label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--label-2);
+  font-size: 13px;
+}
+
+.access-active input,
+.access-list-checks input {
+  accent-color: var(--green);
+}
+
+.access-list-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
 /* ─── Responsive ──────────────────────────────────────────── */
 @media (max-width: 960px) {
   .sidebar {
@@ -563,6 +688,8 @@ code {
   .two     { grid-template-columns: 1fr; }
   .stats   { grid-template-columns: repeat(3, minmax(0,1fr)); gap: 8px; }
   .access-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .access-user-row { grid-template-columns: 1fr; }
+  .access-top { flex-direction: column; }
 }
 
 @media (max-width: 540px) {

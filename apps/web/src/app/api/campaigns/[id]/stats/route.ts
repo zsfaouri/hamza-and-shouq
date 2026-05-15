@@ -1,3 +1,5 @@
+import { filterMessagesForUser } from "@/lib/access-control";
+import { unauthorized, userFromRequest } from "@/lib/auth";
 import {
   ensureStarterCampaignContactsFromGoogleSheet,
   hydrateStore,
@@ -10,7 +12,10 @@ export const dynamic = "force-dynamic";
 
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
-  const campaign = (await hydrateStore()).campaigns.find((item) => item.id === id);
+  const data = await hydrateStore();
+  const user = userFromRequest(_request, data.accessUsers);
+  if (!user) return unauthorized();
+  const campaign = data.campaigns.find((item) => item.id === id);
   if (!campaign) return json({ error: "Campaign not found" }, { status: 404 });
   let changed = await ensureStarterCampaignContactsFromGoogleSheet(campaign);
   if (campaign.contacts.length && !campaign.messages.length) {
@@ -18,11 +23,12 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
     changed = true;
   }
   if (changed) await persistStore();
+  const messages = filterMessagesForUser(campaign.messages, user);
   return json({
-    sent: campaign.messages.filter((message) => message.status === "SENT").length,
-    failed: campaign.messages.filter((message) => message.status === "FAILED").length,
-    pending: campaign.messages.filter((message) => message.status === "PENDING").length,
-    yes: campaign.messages.filter((message) => message.rsvpToken?.response === "YES").length,
-    no: campaign.messages.filter((message) => message.rsvpToken?.response === "NO").length,
+    sent: messages.filter((message) => message.status === "SENT").length,
+    failed: messages.filter((message) => message.status === "FAILED").length,
+    pending: messages.filter((message) => message.status === "PENDING").length,
+    yes: messages.filter((message) => message.rsvpToken?.response === "YES").length,
+    no: messages.filter((message) => message.rsvpToken?.response === "NO").length,
   });
 }

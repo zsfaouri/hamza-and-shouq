@@ -1,16 +1,27 @@
+import { userCanImportTabs } from "@/lib/access-control";
+import { forbidden, unauthorized, userFromRequest } from "@/lib/auth";
 import { hydrateStore, json, persistStore, readGoogleSheetPreview } from "@/lib/vercel-api-store";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
-  const campaign = (await hydrateStore()).campaigns.find((item) => item.id === id);
+  const data = await hydrateStore();
+  const user = userFromRequest(request, data.accessUsers);
+  if (!user) return unauthorized();
+  if (!user.permissions.canImportContacts) return forbidden();
+  const campaign = data.campaigns.find((item) => item.id === id);
   if (!campaign) return json({ error: "Campaign not found" }, { status: 404 });
   const input = await request.json() as { url?: string; sheetId?: string; gid?: string; selectedTabs?: string[] };
   const selectedTabs = Array.isArray(input.selectedTabs)
     ? input.selectedTabs.map((tab) => tab.trim()).filter(Boolean)
     : undefined;
+  if (selectedTabs && !userCanImportTabs(user, selectedTabs)) return forbidden();
   const preview = await readGoogleSheetPreview({ ...input, selectedTabs });
+  if (!selectedTabs && user.role !== "admin") {
+    const previewTabs = preview.worksheets.map((worksheet) => worksheet.title);
+    if (!userCanImportTabs(user, previewTabs)) return forbidden();
+  }
   const importBatchId = crypto.randomUUID();
   const importedAt = new Date().toISOString();
   const contacts = preview.contacts.map((contact) => ({

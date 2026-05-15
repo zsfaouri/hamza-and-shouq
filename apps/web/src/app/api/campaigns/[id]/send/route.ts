@@ -1,3 +1,5 @@
+import { filterMessagesForUser, userCanReadSourceTab } from "@/lib/access-control";
+import { forbidden, unauthorized, userFromRequest } from "@/lib/auth";
 import { sendPersonalWhatsAppMessage } from "@/lib/personal-whatsapp";
 import {
   ensureStarterCampaignContactsFromGoogleSheet,
@@ -15,13 +17,18 @@ export const maxDuration = 60;
 
 export async function POST(_request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
-  const campaign = (await hydrateStore()).campaigns.find((item) => item.id === id);
+  const data = await hydrateStore();
+  const user = userFromRequest(_request, data.accessUsers);
+  if (!user) return unauthorized();
+  if (!user.permissions.canSendMessages) return forbidden();
+  const campaign = data.campaigns.find((item) => item.id === id);
   if (!campaign) return json({ error: "Campaign not found" }, { status: 404 });
   await ensureStarterCampaignContactsFromGoogleSheet(campaign);
-  if (!campaign.messages.length) prepareCampaignMessages(campaign);
+  if (!campaign.messages.length) prepareCampaignMessages(campaign, (contact) => userCanReadSourceTab(user, contact.sourceTab));
   const provider = settings().provider;
   campaign.status = "SENDING";
-  for (const message of campaign.messages.filter((item) => item.status === "PENDING")) {
+  const pending = filterMessagesForUser(campaign.messages, user).filter((item) => item.status === "PENDING");
+  for (const message of pending) {
     try {
       if (provider === "personal") {
         await sendPersonalWhatsAppMessage(message.contact.phone, message.body);
@@ -39,5 +46,10 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
   campaign.failedCount = campaign.messages.filter((message) => message.status === "FAILED").length;
   campaign.status = campaign.failedCount ? "FAILED" : "SENT";
   await persistStore();
-  return json({ queued: campaign.messages.length, sent: campaign.sentCount, failed: campaign.failedCount });
+  const visible = filterMessagesForUser(campaign.messages, user);
+  return json({
+    queued: pending.length,
+    sent: visible.filter((message) => message.status === "SENT").length,
+    failed: visible.filter((message) => message.status === "FAILED").length,
+  });
 }

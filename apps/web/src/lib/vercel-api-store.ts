@@ -1,7 +1,8 @@
 import https from "node:https";
+import { DEFAULT_ACCESS_USERS, type AccessUserRecord } from "@/lib/access-control";
 import { initPersonalWhatsApp, personalWhatsAppStatus, waitForPersonalWhatsAppQr } from "@/lib/personal-whatsapp";
 
-type Template = {
+export type Template = {
   id: string;
   name: string;
   bodyEn: string;
@@ -10,7 +11,7 @@ type Template = {
   mediaType?: string | null;
 };
 
-type Contact = {
+export type Contact = {
   id: string;
   name: string;
   phone: string;
@@ -32,7 +33,7 @@ type GoogleSheetWorksheetSummary = GoogleSheetWorksheet & {
   preview: Array<{ name: string; phone: string }>;
 };
 
-type Message = {
+export type Message = {
   id: string;
   body: string;
   status: "PENDING" | "SENT" | "FAILED";
@@ -41,7 +42,7 @@ type Message = {
   rsvpToken?: { response?: "YES" | "NO" | null; clickedAt?: string | null } | null;
 };
 
-type Campaign = {
+export type Campaign = {
   id: string;
   name: string;
   status: "DRAFT" | "READY" | "SENDING" | "SENT" | "FAILED";
@@ -54,11 +55,12 @@ type Campaign = {
   messages: Message[];
 };
 
-type Store = {
+export type Store = {
   templates: Template[];
   campaigns: Campaign[];
   settings: WhatsAppSettings;
   personalWhatsApp: PersonalWhatsAppSnapshot;
+  accessUsers: AccessUserRecord[];
 };
 
 export type WhatsAppSettings = {
@@ -116,6 +118,7 @@ function globalStore() {
         personalBackendUrl: process.env.PERSONAL_WHATSAPP_API_URL ?? "",
       },
       personalWhatsApp: emptyPersonalWhatsAppSnapshot(),
+      accessUsers: DEFAULT_ACCESS_USERS.map((user) => ({ ...user, allowedTabs: [...user.allowedTabs] })),
     };
   }
   return globalWithStore.__hsStore;
@@ -145,6 +148,7 @@ export function saveSettings(input: Partial<WhatsAppSettings>) {
 export function store() {
   const data = globalStore();
   data.personalWhatsApp ??= emptyPersonalWhatsAppSnapshot();
+  data.accessUsers ??= DEFAULT_ACCESS_USERS.map((user) => ({ ...user, allowedTabs: [...user.allowedTabs] }));
   for (const campaign of data.campaigns) {
     campaign.template = data.templates.find((template) => template.id === campaign.templateId) ?? null;
     campaign.totalCount = campaign.contacts.length;
@@ -446,9 +450,10 @@ export async function ensureStarterCampaignContactsFromGoogleSheet(campaign: Cam
   return true;
 }
 
-export function prepareCampaignMessages(campaign: Campaign) {
+export function prepareCampaignMessages(campaign: Campaign, canUseContact: (contact: Contact) => boolean = () => true) {
   if (!campaign.template) return 0;
-  campaign.messages = campaign.contacts.map((contact) => {
+  const preservedMessages = campaign.messages.filter((message) => !canUseContact(message.contact));
+  const preparedMessages = campaign.contacts.filter(canUseContact).map((contact) => {
     const token = id("rsvp");
     const rsvpLink = `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://web-zsfaouris-projects.vercel.app"}/rsvp/${token}`;
     const body = renderTemplate(campaign.template?.bodyEn ?? "", {
@@ -466,8 +471,9 @@ export function prepareCampaignMessages(campaign: Campaign) {
       rsvpToken: { response: null, clickedAt: null },
     };
   });
+  campaign.messages = [...preservedMessages, ...preparedMessages];
   campaign.status = campaign.messages.length ? "READY" : "DRAFT";
-  return campaign.messages.length;
+  return preparedMessages.length;
 }
 
 function readUrlWithNodeHttps(url: string, redirects = 0): Promise<string> {

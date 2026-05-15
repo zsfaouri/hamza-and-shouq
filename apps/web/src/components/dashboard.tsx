@@ -14,7 +14,14 @@ type CDetail     = Campaign & { contacts: Contact[]; messages: Message[] };
 type Stats       = { sent: number; failed: number; pending: number; yes: number; no: number };
 type WaStatus    = { provider: "personal" | "meta"; personal: { state: string; qr: string | null; error?: string | null }; meta: { configured: boolean; phoneNumberId: string; graphVersion: string; sendMode: string; templateName: string } };
 type WaSettings  = { provider: "personal" | "meta"; personalBackendUrl: string };
-type SheetResult = { imported: number; headers?: string[]; message?: string };
+type SheetResult = {
+  imported: number;
+  totalCount?: number;
+  headers?: string[];
+  contacts?: Contact[];
+  worksheets?: Array<{ title: string; gid: string; rowCount: number; contactCount: number }>;
+  message?: string;
+};
 
 const empty: Stats = { sent: 0, failed: 0, pending: 0, yes: 0, no: 0 };
 
@@ -26,7 +33,7 @@ const cmpBadge = (s: string)   => s === "SENT" ? "b-g" : s === "SENDING" ? "b-a"
 
 function preserveQr(cur: WaStatus, next: WaStatus): WaStatus {
   if (next.provider === "personal" && cur.personal.qr && !next.personal.qr && next.personal.state !== "ready")
-    return { ...next, personal: { ...next.personal, qr: cur.personal.qr } };
+    return { ...next, personal: { ...next.personal, state: cur.personal.state === "qr" ? "qr" : next.personal.state, qr: cur.personal.qr } };
   return next;
 }
 
@@ -87,7 +94,7 @@ export function Dashboard() {
     setCampaign(d); setStats(s);
   }
 
-  useEffect(() => { void refresh(); const t = window.setInterval(() => void refresh(), 5000); return () => window.clearInterval(t); }, []); // eslint-disable-line
+  useEffect(() => { void refresh(); const t = window.setInterval(() => void refresh(), 5000); return () => window.clearInterval(t); }, []);
   useEffect(() => { void loadCampaign(selId); }, [selId]);
   useEffect(() => {
     const ids = ["campaign", "template", "contacts", "whatsapp"];
@@ -114,12 +121,12 @@ export function Dashboard() {
   const onUpdateTmpl  = (e: FormEvent) => { e.preventDefault(); if (!campaign?.template) return; run("tmpl", async () => { const u = await apiPut<Template>(`/api/templates/${campaign.template!.id}`, { name: tmpl.name, bodyEn: tmpl.bodyEn, bodyAr: tmpl.bodyAr || null, mediaUrl: tmpl.mediaUrl || null, mediaType: tmpl.mediaType || null }); setTemplates((c) => c.map((t) => t.id === u.id ? u : t)); notify("Template updated."); }); };
   const onCreateCmp   = (e: FormEvent) => { e.preventDefault(); run("cmp", async () => { const c = await apiPost<Campaign>("/api/campaigns", cmp); notify("Campaign created."); setCampaigns((p) => [c, ...p]); setSelId(c.id); }); };
   const onContacts    = (e: FormEvent<HTMLFormElement>) => { e.preventDefault(); if (!campaign) return; run("contacts", async () => { await apiPost(`/api/campaigns/${campaign.id}/contacts`, new FormData(e.currentTarget)); notify("Contacts imported."); await loadCampaign(campaign.id); }); };
-  const onSheet       = (e: FormEvent<HTMLFormElement>) => { e.preventDefault(); if (!campaign) return; run("sheet", async () => { const r = await apiPost<SheetResult>(`/api/campaigns/${campaign.id}/contacts/google-sheet`, { url: sheetUrl }); setSheet(r); notify(`Imported ${r.imported} contacts.`); await loadCampaign(campaign.id); }); };
+  const onSheet       = (e: FormEvent<HTMLFormElement>) => { e.preventDefault(); if (!campaign) return; run("sheet", async () => { const r = await apiPost<SheetResult>(`/api/campaigns/${campaign.id}/contacts/google-sheet`, { url: sheetUrl }); setSheet(r); notify(r.message ?? `Imported ${r.imported} contacts.`); await loadCampaign(campaign.id); }); };
   const onMedia       = (e: FormEvent<HTMLFormElement>) => { e.preventDefault(); run("media", async () => { const m = await apiPost<{ url: string; type: string }>("/api/media", new FormData(e.currentTarget)); setTmpl((c) => ({ ...c, mediaUrl: m.url, mediaType: m.type })); notify("Media uploaded."); }); };
   const onPrepare     = () => { if (!campaign) return; run("prepare", async () => { await apiPost(`/api/campaigns/${campaign.id}/prepare`); notify("Messages prepared."); await loadCampaign(campaign.id); }); };
   const onSend        = () => { if (!campaign) return; const n = campaign.contacts.length; if (!window.confirm(`Send to ${n} contact${n !== 1 ? "s" : ""}? This cannot be undone.`)) return; run("send", async () => { await apiPost(`/api/campaigns/${campaign.id}/send`); notify("Sending started."); await loadCampaign(campaign.id); }); };
-  const onStartWa     = () => run("wa", async () => { const w = await apiPost<WaStatus>("/api/whatsapp/start"); setWa(w); notify("WhatsApp session starting."); });
-  const onSaveWaSet   = (e: FormEvent) => { e.preventDefault(); run("wa-set", async () => { await apiPost("/api/settings", waSet); const w = await apiGet<WaStatus>("/api/whatsapp/status"); setWa(w); notify("Settings saved."); }); };
+  const onStartWa     = () => run("wa", async () => { const w = await apiPost<WaStatus>("/api/whatsapp/start"); setWa((c) => preserveQr(c, w)); notify(w.personal.qr ? "WhatsApp QR generated." : "WhatsApp session starting."); });
+  const onSaveWaSet   = (e: FormEvent) => { e.preventDefault(); run("wa-set", async () => { await apiPut("/api/settings", waSet); const w = await apiGet<WaStatus>("/api/whatsapp/status"); setWa((c) => preserveQr(c, w)); notify("Settings saved."); }); };
 
   return (
     <div className="app">
@@ -305,6 +312,11 @@ export function Dashboard() {
                     {sheetResult.message ?? `${sheetResult.imported} contacts imported.`}
                     {sheetResult.headers?.length
                       ? <div style={{ marginTop: 6, fontSize: 12, color: "var(--label-3)" }}>Columns: {sheetResult.headers.join(", ")}</div>
+                      : null}
+                    {sheetResult.worksheets?.length
+                      ? <div style={{ marginTop: 6, fontSize: 12, color: "var(--label-3)" }}>
+                          Worksheets: {sheetResult.worksheets.map((sheet) => `${sheet.title} ${sheet.contactCount}/${sheet.rowCount}`).join(", ")}
+                        </div>
                       : null}
                   </div>
                 )}

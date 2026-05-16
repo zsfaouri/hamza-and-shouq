@@ -17,11 +17,13 @@ apps/web
   Next.js dashboard
   Next.js API routes
   Google Sheets XLSX reader
-  WhatsApp Cloud API sender
+  WhatsApp provider switch
+  Meta WhatsApp Cloud API sender
+  Personal WhatsApp bridge/local QR sender
   RSVP link and webhook handlers
 ```
 
-There is no separate Express API, Prisma database, SQLite file, QR session, or `whatsapp-web.js` process in the rebuilt app.
+There is no old Express API, Prisma database, or SQLite campaign store in the rebuilt app. Personal WhatsApp is restored as a provider option. On Vercel it requires a persistent bridge URL; in local development it can start a QR session from the Next server.
 
 ## Setup
 
@@ -58,9 +60,21 @@ Name, Number, Phone, Mobile, WhatsApp, Guest Name
 
 No tab is imported by default. You must check the exact tabs and click `Import Checked Tabs`.
 
-## WhatsApp
+## WhatsApp Providers
 
-The rebuilt app uses the official Meta WhatsApp Cloud API.
+The dashboard supports two providers.
+
+Personal WhatsApp:
+
+```text
+WHATSAPP_PROVIDER=personal
+PERSONAL_WHATSAPP_API_URL=
+PERSONAL_WHATSAPP_TOKEN=
+```
+
+If `PERSONAL_WHATSAPP_API_URL` is empty, local development uses an in-process QR session. Vercel cannot run that session durably, so production personal sending needs a persistent bridge URL.
+
+Meta WhatsApp Cloud API:
 
 Required environment or dashboard settings:
 

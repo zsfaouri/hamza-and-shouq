@@ -11,11 +11,14 @@ export async function POST(request: Request) {
   const state = await loadState();
   state.whatsapp = {
     ...state.whatsapp,
+    provider: input.provider === "personal" ? "personal" : "meta",
     graphVersion: String(input.graphVersion || state.whatsapp.graphVersion).trim() || "v23.0",
     phoneNumberId: String(input.phoneNumberId || state.whatsapp.phoneNumberId).trim(),
     accessToken: String(input.accessToken || "").trim() || state.whatsapp.accessToken,
     verifyToken: String(input.verifyToken || state.whatsapp.verifyToken).trim() || "hamza-shouq-webhook",
     senderPhone: String(input.senderPhone || state.whatsapp.senderPhone).trim(),
+    personalBridgeUrl: String(input.personalBridgeUrl || state.whatsapp.personalBridgeUrl).trim(),
+    personalBridgeToken: String(input.personalBridgeToken || "").trim() || state.whatsapp.personalBridgeToken,
   };
   await saveState(state);
   return Response.json({ ok: true });

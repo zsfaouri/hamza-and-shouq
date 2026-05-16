@@ -1,7 +1,9 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
+
 import { useEffect, useMemo, useState } from "react";
-import type { AppState, SheetTab } from "@/lib/types";
+import type { AppState, SheetTab, WhatsAppStatus } from "@/lib/types";
 
 type PublicState = AppState;
 
@@ -27,6 +29,7 @@ export default function Dashboard() {
   const [busy, setBusy] = useState("");
   const [sendConfirm, setSendConfirm] = useState("");
   const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set());
+  const [whatsAppStatus, setWhatsAppStatus] = useState<WhatsAppStatus | null>(null);
 
   async function refresh() {
     const data = await api<PublicState>("/api/state");
@@ -108,6 +111,9 @@ export default function Dashboard() {
           accessToken: form.get("accessToken"),
           verifyToken: form.get("verifyToken"),
           senderPhone: form.get("senderPhone"),
+          provider: form.get("provider"),
+          personalBridgeUrl: form.get("personalBridgeUrl"),
+          personalBridgeToken: form.get("personalBridgeToken"),
         }),
       });
       await refresh();
@@ -137,6 +143,32 @@ export default function Dashboard() {
       show(`Send finished. Sent ${result.sent}. Failed ${result.failed}.`);
     } catch (err) {
       show(err instanceof Error ? err.message : "Send failed.", true);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function checkWhatsAppStatus() {
+    setBusy("wa-status");
+    try {
+      const result = await api<WhatsAppStatus>("/api/whatsapp/status");
+      setWhatsAppStatus(result);
+      show(result.error || `WhatsApp status: ${result.state}`);
+    } catch (err) {
+      show(err instanceof Error ? err.message : "WhatsApp status failed.", true);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function startPersonalWhatsApp() {
+    setBusy("wa-start");
+    try {
+      const result = await api<WhatsAppStatus>("/api/whatsapp/start", { method: "POST", body: JSON.stringify({}) });
+      setWhatsAppStatus(result);
+      show(result.qrDataUrl || result.qr ? "QR session started. Scan the code." : `WhatsApp status: ${result.state}`);
+    } catch (err) {
+      show(err instanceof Error ? err.message : "WhatsApp start failed.", true);
     } finally {
       setBusy("");
     }
@@ -216,13 +248,34 @@ export default function Dashboard() {
           </div>
 
           <form className="panel" onSubmit={submitSettings}>
-            <h2>WhatsApp Business</h2>
+            <h2>WhatsApp</h2>
+            <div className="field">
+              <label>Provider</label>
+              <select className="input" name="provider" defaultValue={state.whatsapp.provider}>
+                <option value="personal">Personal WhatsApp</option>
+                <option value="meta">Meta WhatsApp Cloud API</option>
+              </select>
+            </div>
             <div className="field"><label>Sender phone</label><input className="input" name="senderPhone" defaultValue={state.whatsapp.senderPhone} /></div>
+            <div className="field"><label>Personal bridge URL</label><input className="input" name="personalBridgeUrl" defaultValue={state.whatsapp.personalBridgeUrl} placeholder="Optional persistent bridge URL" /></div>
+            <div className="field"><label>Personal bridge token</label><input className="input" name="personalBridgeToken" placeholder={state.whatsapp.personalBridgeToken === "SET" ? "Token is saved" : "Optional bridge token"} /></div>
             <div className="field"><label>Graph version</label><input className="input" name="graphVersion" defaultValue={state.whatsapp.graphVersion} /></div>
             <div className="field"><label>Phone number ID</label><input className="input" name="phoneNumberId" defaultValue={state.whatsapp.phoneNumberId} /></div>
             <div className="field"><label>Access token</label><input className="input" name="accessToken" placeholder={state.whatsapp.accessToken === "SET" ? "Token is saved" : "Paste Meta token"} /></div>
             <div className="field"><label>Webhook verify token</label><input className="input" name="verifyToken" defaultValue={state.whatsapp.verifyToken} /></div>
-            <button className="btn primary" disabled={busy === "settings"}>{busy === "settings" ? "Saving..." : "Save WhatsApp Settings"}</button>
+            <div className="row">
+              <button className="btn primary" disabled={busy === "settings"}>{busy === "settings" ? "Saving..." : "Save WhatsApp Settings"}</button>
+              <button className="btn" type="button" disabled={busy === "wa-status"} onClick={checkWhatsAppStatus}>{busy === "wa-status" ? "Checking..." : "Check Status"}</button>
+              <button className="btn" type="button" disabled={busy === "wa-start" || state.whatsapp.provider !== "personal"} onClick={startPersonalWhatsApp}>{busy === "wa-start" ? "Starting..." : "Start Personal QR"}</button>
+            </div>
+            {whatsAppStatus ? (
+              <div className={`notice ${whatsAppStatus.error ? "error" : "ok"}`} style={{ marginTop: 12 }}>
+                <b>{whatsAppStatus.provider}</b> · {whatsAppStatus.mode} · {whatsAppStatus.state}
+                {whatsAppStatus.accountPhone ? ` · +${whatsAppStatus.accountPhone}` : ""}
+                {whatsAppStatus.error ? `\n${whatsAppStatus.error}` : ""}
+                {whatsAppStatus.qrDataUrl ? <img src={whatsAppStatus.qrDataUrl} alt="WhatsApp QR" style={{ display: "block", width: 220, height: 220, marginTop: 12 }} /> : null}
+              </div>
+            ) : null}
           </form>
         </section>
 

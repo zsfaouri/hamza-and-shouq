@@ -36,6 +36,9 @@ function normalizeState(input: Partial<AppState> | null | undefined): AppState {
     template: { ...base.template, ...(input?.template || {}) },
     whatsapp: { ...base.whatsapp, ...(input?.whatsapp || {}) },
   };
+  merged.whatsapp.provider = merged.whatsapp.provider === "personal" ? "personal" : "meta";
+  merged.whatsapp.personalBridgeUrl ||= "";
+  merged.whatsapp.personalBridgeToken ||= "";
   merged.campaign.contacts ||= [];
   merged.campaign.messages ||= [];
   merged.campaign.selectedTabs ||= [];
@@ -106,6 +109,7 @@ export function publicState(state: AppState) {
     whatsapp: {
       ...state.whatsapp,
       accessToken: state.whatsapp.accessToken ? "SET" : "",
+      personalBridgeToken: state.whatsapp.personalBridgeToken ? "SET" : "",
     },
   };
 }

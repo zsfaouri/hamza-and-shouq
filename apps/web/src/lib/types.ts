@@ -43,12 +43,26 @@ export type Campaign = {
 };
 
 export type WhatsAppSettings = {
-  provider: "meta";
+  provider: "meta" | "personal";
   graphVersion: string;
   phoneNumberId: string;
   accessToken: string;
   verifyToken: string;
   senderPhone: string;
+  personalBridgeUrl: string;
+  personalBridgeToken: string;
+};
+
+export type WhatsAppStatus = {
+  provider: "meta" | "personal";
+  configured: boolean;
+  state: string;
+  qr: string;
+  qrDataUrl: string;
+  accountPhone: string;
+  displayName: string;
+  error: string;
+  mode: "cloud" | "bridge" | "local";
 };
 
 export type AppState = {

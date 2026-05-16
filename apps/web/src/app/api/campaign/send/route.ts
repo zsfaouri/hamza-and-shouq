@@ -1,7 +1,7 @@
 import { requireAuth } from "@/lib/auth";
 import { nowIso } from "@/lib/domain";
 import { loadState, saveState } from "@/lib/store";
-import { sendWhatsAppText } from "@/lib/whatsapp";
+import { sendWhatsAppText, whatsappConfigured } from "@/lib/whatsapp";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,6 +15,9 @@ export async function POST(request: Request) {
   if (!messageIds.length) return Response.json({ error: "Select at least one message." }, { status: 400 });
 
   const state = await loadState();
+  if (!whatsappConfigured(state.whatsapp)) {
+    return Response.json({ error: "WhatsApp is not configured for the selected provider." }, { status: 400 });
+  }
   let sent = 0;
   let failed = 0;
   for (const id of messageIds) {

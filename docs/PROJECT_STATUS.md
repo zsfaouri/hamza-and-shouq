@@ -20,6 +20,8 @@ Kept as core product:
 - explicit checked-tab import
 - template save and message preview rebuild
 - WhatsApp Business Cloud API settings
+- Personal WhatsApp provider settings
+- Personal bridge/local QR status and start routes
 - guarded selected-row sending
 - RSVP links
 - WhatsApp webhook RSVP readback
@@ -55,3 +57,17 @@ pnpm.cmd build
 ```
 
 All passed locally.
+
+## WhatsApp Personal Option
+
+Personal WhatsApp has been restored as a provider option.
+
+Production on Vercel requires:
+
+```text
+WHATSAPP_PROVIDER=personal
+PERSONAL_WHATSAPP_API_URL=<persistent bridge url>
+PERSONAL_WHATSAPP_TOKEN=<optional bridge token>
+```
+
+Without a bridge URL, Vercel returns `bridge-required` for personal status. Local development can start an in-process QR session through `/api/whatsapp/start`.

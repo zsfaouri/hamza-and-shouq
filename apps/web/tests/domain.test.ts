@@ -40,7 +40,16 @@ const state = {
   version: 1,
   campaign: { id: "campaign-main", name: "Test", sheetUrl: "", selectedTabs: [], contacts: [contact], messages: [message], updatedAt: "" },
   template,
-  whatsapp: { provider: "meta", graphVersion: "v23.0", phoneNumberId: "", accessToken: "", verifyToken: "verify", senderPhone: "" },
+  whatsapp: {
+    provider: "meta",
+    graphVersion: "v23.0",
+    phoneNumberId: "",
+    accessToken: "",
+    verifyToken: "verify",
+    senderPhone: "",
+    personalBridgeUrl: "",
+    personalBridgeToken: "",
+  },
 } satisfies AppState;
 
 assert.equal(setRsvp(state, "token-1", "YES"), true);

@@ -40,12 +40,14 @@ export function defaultState(): AppState {
     campaign: defaultCampaign(),
     template: defaultTemplate(),
     whatsapp: {
-      provider: "meta",
+      provider: process.env.WHATSAPP_PROVIDER === "personal" ? "personal" : "meta",
       graphVersion: process.env.META_GRAPH_VERSION || "v23.0",
       phoneNumberId: process.env.META_PHONE_NUMBER_ID || "",
       accessToken: process.env.META_ACCESS_TOKEN || "",
       verifyToken: process.env.META_VERIFY_TOKEN || "hamza-shouq-webhook",
       senderPhone: process.env.WHATSAPP_SENDER_PHONE || "962795941263",
+      personalBridgeUrl: process.env.PERSONAL_WHATSAPP_API_URL || "",
+      personalBridgeToken: process.env.PERSONAL_WHATSAPP_TOKEN || "",
     },
   };
 }

@@ -8,6 +8,8 @@ dist
 *.tsbuildinfo
 test-contact*.csv
 apps/web/.data
+apps/web/.wwebjs_auth
+apps/web/.wwebjs_cache
 .claude/
 screenshot*.png
 whatsapp-qr*.png

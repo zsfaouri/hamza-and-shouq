@@ -11,9 +11,20 @@ function memoryRef() {
 
 function supabaseConfig() {
   const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+    || process.env.SUPABASE_SECRET_KEY
+    || process.env.SUPABASE_ANON_KEY
+    || process.env.SUPABASE_PUBLISHABLE_KEY
+    || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
   if (!url || !key) return null;
   return { url: url.replace(/\/$/, ""), key };
+}
+
+function supabaseHeaders(key: string, contentType = false) {
+  const headers: Record<string, string> = { apikey: key };
+  if (key.startsWith("eyJ")) headers.Authorization = `Bearer ${key}`;
+  if (contentType) headers["Content-Type"] = "application/json";
+  return headers;
 }
 
 function normalizeState(input: Partial<AppState> | null | undefined): AppState {
@@ -39,7 +50,7 @@ export async function loadState(): Promise<AppState> {
   if (config) {
     try {
       const response = await fetch(`${config.url}/rest/v1/hs_app_state?id=eq.main&select=data`, {
-        headers: { apikey: config.key, Authorization: `Bearer ${config.key}` },
+        headers: supabaseHeaders(config.key),
         cache: "no-store",
       });
       if (response.ok) {
@@ -73,9 +84,7 @@ export async function saveState(state: AppState) {
     const response = await fetch(`${config.url}/rest/v1/hs_app_state`, {
       method: "POST",
       headers: {
-        apikey: config.key,
-        Authorization: `Bearer ${config.key}`,
-        "Content-Type": "application/json",
+        ...supabaseHeaders(config.key, true),
         Prefer: "resolution=merge-duplicates",
       },
       body: JSON.stringify({ id: "main", data: state }),
@@ -99,4 +108,30 @@ export function publicState(state: AppState) {
       accessToken: state.whatsapp.accessToken ? "SET" : "",
     },
   };
+}
+
+export async function storageDiagnostics() {
+  const config = supabaseConfig();
+  if (!config) return { configured: false, selectOk: false, writeOk: false, error: "Supabase env is not configured." };
+  const headers = supabaseHeaders(config.key);
+  const out = { configured: true, keyKind: config.key.startsWith("eyJ") ? "jwt" : "publishable-or-secret", selectOk: false, writeOk: false, error: "" };
+  try {
+    const select = await fetch(`${config.url}/rest/v1/hs_app_state?id=eq.main&select=id`, { headers, cache: "no-store" });
+    out.selectOk = select.ok;
+    if (!select.ok) out.error = `select ${select.status}: ${(await select.text()).slice(0, 160)}`;
+  } catch (error) {
+    out.error = error instanceof Error ? error.message : "select failed";
+  }
+  try {
+    const probe = await fetch(`${config.url}/rest/v1/hs_app_state`, {
+      method: "POST",
+      headers: { ...supabaseHeaders(config.key, true), Prefer: "resolution=merge-duplicates" },
+      body: JSON.stringify({ id: "__probe", data: { checkedAt: new Date().toISOString() } }),
+    });
+    out.writeOk = probe.ok;
+    if (!probe.ok) out.error = `write ${probe.status}: ${(await probe.text()).slice(0, 160)}`;
+  } catch (error) {
+    out.error = error instanceof Error ? error.message : "write failed";
+  }
+  return out;
 }

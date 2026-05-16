@@ -35,12 +35,16 @@ export function defaultCampaign(): Campaign {
 }
 
 export function defaultState(): AppState {
+  const metaConfigured = Boolean(process.env.META_PHONE_NUMBER_ID && process.env.META_ACCESS_TOKEN);
+  const requestedProvider = process.env.WHATSAPP_PROVIDER === "meta" || process.env.WHATSAPP_PROVIDER === "personal"
+    ? process.env.WHATSAPP_PROVIDER
+    : "personal";
   return {
     version: 1,
     campaign: defaultCampaign(),
     template: defaultTemplate(),
     whatsapp: {
-      provider: process.env.WHATSAPP_PROVIDER === "personal" ? "personal" : "meta",
+      provider: requestedProvider === "meta" && metaConfigured ? "meta" : "personal",
       graphVersion: process.env.META_GRAPH_VERSION || "v23.0",
       phoneNumberId: process.env.META_PHONE_NUMBER_ID || "",
       accessToken: process.env.META_ACCESS_TOKEN || "",

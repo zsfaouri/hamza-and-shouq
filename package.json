@@ -5,9 +5,10 @@
   "scripts": {
     "dev": "pnpm.cmd --filter @hamza-and-shouq/web dev",
     "dev:web": "pnpm.cmd --filter @hamza-and-shouq/web dev",
-    "build": "pnpm.cmd --filter @hamza-and-shouq/web build",
+    "dev:bridge": "pnpm.cmd --filter @hamza-and-shouq/bridge dev",
+    "build": "pnpm.cmd --filter @hamza-and-shouq/bridge build && pnpm.cmd --filter @hamza-and-shouq/web build",
     "lint": "pnpm.cmd --filter @hamza-and-shouq/web lint",
-    "typecheck": "pnpm.cmd --filter @hamza-and-shouq/web typecheck",
+    "typecheck": "pnpm.cmd --filter @hamza-and-shouq/bridge typecheck && pnpm.cmd --filter @hamza-and-shouq/web typecheck",
     "test": "pnpm.cmd --filter @hamza-and-shouq/web test"
   },
   "packageManager": "pnpm@10.13.1"

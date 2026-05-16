@@ -10,8 +10,7 @@ Removed:
 - Express server
 - Prisma schema and migrations
 - SQLite database flow
-- `whatsapp-web.js`
-- QR-based WhatsApp personal sender
+- QR-based WhatsApp personal sender from the Vercel app
 - old budget/reminder/access side features
 
 Kept as core product:
@@ -22,6 +21,7 @@ Kept as core product:
 - WhatsApp Business Cloud API settings
 - Personal WhatsApp provider settings
 - Personal bridge/local QR status and start routes
+- Persistent `apps/bridge` service for Personal WhatsApp
 - guarded selected-row sending
 - RSVP links
 - WhatsApp webhook RSVP readback
@@ -71,3 +71,15 @@ PERSONAL_WHATSAPP_TOKEN=<optional bridge token>
 ```
 
 Without a bridge URL, Vercel returns `bridge-required` for personal status. Local development can start an in-process QR session through `/api/whatsapp/start`.
+
+The persistent bridge lives at:
+
+```text
+apps/bridge
+```
+
+Deployment instructions:
+
+```text
+docs/PERSONAL_WHATSAPP_BRIDGE.md
+```

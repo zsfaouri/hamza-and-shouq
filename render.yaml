@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: hamza-shouq-whatsapp-bridge
+    runtime: node
+    plan: starter
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @hamza-and-shouq/bridge build
+    startCommand: pnpm --filter @hamza-and-shouq/bridge start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: WEB_ORIGIN
+        value: https://web-zsfaouris-projects.vercel.app
+      - key: APP_BASE_URL
+        value: https://web-zsfaouris-projects.vercel.app
+      - key: WHATSAPP_SESSION_PATH
+        value: /var/data/wwebjs_auth
+      - key: BRIDGE_TOKEN
+        sync: false
+    disk:
+      name: whatsapp-session
+      mountPath: /var/data
+      sizeGB: 1

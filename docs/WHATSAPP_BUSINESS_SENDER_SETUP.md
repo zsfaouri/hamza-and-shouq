@@ -22,6 +22,12 @@ Vercel cannot keep a personal QR session alive by itself. Use one of these:
 - Local development: leave `PERSONAL_WHATSAPP_API_URL` empty and click `Start Personal QR`.
 - Production: set `PERSONAL_WHATSAPP_API_URL` to a persistent bridge server that exposes `/api/whatsapp/status`, `/api/whatsapp/start`, and `/api/whatsapp/test`.
 
+The bridge implementation is included in:
+
+```text
+apps/bridge
+```
+
 Optional bridge auth:
 
 ```text

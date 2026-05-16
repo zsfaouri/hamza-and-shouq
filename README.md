@@ -1,6 +1,6 @@
 # Hamza and Shouq RSVP System
 
-Single-app Next.js system for importing invitation lists from Google Sheets, saving one WhatsApp message template, sending selected WhatsApp Business messages, and recording RSVP replies.
+Next.js dashboard plus persistent WhatsApp bridge for importing invitation lists from Google Sheets, saving one WhatsApp message template, sending selected WhatsApp messages, and recording RSVP replies.
 
 ## Links
 
@@ -21,6 +21,9 @@ apps/web
   Meta WhatsApp Cloud API sender
   Personal WhatsApp bridge/local QR sender
   RSVP link and webhook handlers
+
+apps/bridge
+  Persistent personal WhatsApp bridge for QR-based sending
 ```
 
 There is no old Express API, Prisma database, or SQLite campaign store in the rebuilt app. Personal WhatsApp is restored as a provider option. On Vercel it requires a persistent bridge URL; in local development it can start a QR session from the Next server.
@@ -73,6 +76,12 @@ PERSONAL_WHATSAPP_TOKEN=
 ```
 
 If `PERSONAL_WHATSAPP_API_URL` is empty, local development uses an in-process QR session. Vercel cannot run that session durably, so production personal sending needs a persistent bridge URL.
+
+Bridge documentation:
+
+```text
+docs/PERSONAL_WHATSAPP_BRIDGE.md
+```
 
 Meta WhatsApp Cloud API:
 

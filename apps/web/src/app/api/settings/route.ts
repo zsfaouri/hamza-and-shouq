@@ -1,21 +1,22 @@
-import { forbidden, unauthorized, userFromRequest } from "@/lib/auth";
-import { hydrateStore, json, persistStore, saveSettings, settings } from "@/lib/vercel-api-store";
+import { requireAuth } from "@/lib/auth";
+import { loadState, saveState } from "@/lib/store";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(request: Request) {
-  const data = await hydrateStore();
-  const user = userFromRequest(request, data.accessUsers);
-  if (!user) return unauthorized();
-  return json(settings());
-}
-
-export async function PUT(request: Request) {
-  const data = await hydrateStore();
-  const user = userFromRequest(request, data.accessUsers);
-  if (!user) return unauthorized();
-  if (!user.permissions.canManageWhatsApp) return forbidden();
-  const saved = saveSettings(await request.json());
-  await persistStore();
-  return json(saved);
+export async function POST(request: Request) {
+  const auth = requireAuth(request);
+  if (auth) return auth;
+  const input = await request.json().catch(() => ({})) as Record<string, string>;
+  const state = await loadState();
+  state.whatsapp = {
+    ...state.whatsapp,
+    graphVersion: String(input.graphVersion || state.whatsapp.graphVersion).trim() || "v23.0",
+    phoneNumberId: String(input.phoneNumberId || state.whatsapp.phoneNumberId).trim(),
+    accessToken: String(input.accessToken || "").trim() || state.whatsapp.accessToken,
+    verifyToken: String(input.verifyToken || state.whatsapp.verifyToken).trim() || "hamza-shouq-webhook",
+    senderPhone: String(input.senderPhone || state.whatsapp.senderPhone).trim(),
+  };
+  await saveState(state);
+  return Response.json({ ok: true });
 }

@@ -1,18 +1,9 @@
-import type { Metadata, Viewport } from "next";
+import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Hamza & Shouq Messaging",
-  description: "WhatsApp campaign dashboard for invitations and RSVP tracking.",
-  icons: {
-    icon: "/logo.png",
-    apple: "/logo.png",
-  },
-};
-
-export const viewport: Viewport = {
-  width: "device-width",
-  initialScale: 1,
+  title: "Hamza and Shouq RSVP",
+  description: "Wedding invitation control room",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

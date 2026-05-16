@@ -1,110 +1,125 @@
-# Hamza and Shouq WhatsApp Bulk Messaging System
+# Hamza and Shouq RSVP System
 
-Local-first campaign tool for spreadsheet-driven WhatsApp invitations, personalized templates, media attachments, RSVP links, and a clean English-primary dashboard.
+Single-app Next.js system for importing invitation lists from Google Sheets, saving one WhatsApp message template, sending selected WhatsApp Business messages, and recording RSVP replies.
 
-## Project Links
+## Links
 
 ```text
 GitHub: https://github.com/zsfaouri/hamza-and-shouq.git
 Vercel: https://web-zsfaouris-projects.vercel.app
-Local web: http://localhost:3000
-Local API: http://localhost:4100
+Local:  http://localhost:3000
 ```
-
-The Vercel deployment is the frontend. Full public production use requires deploying `apps/api` to a persistent HTTPS backend and setting `NEXT_PUBLIC_API_URL` to that backend URL.
 
 ## Architecture
 
 ```text
-apps/web  -> Next.js dashboard, deployable to Vercel
-apps/api  -> Express API, Prisma SQLite, whatsapp-web.js engine, deployable to Railway/Render
+apps/web
+  Next.js dashboard
+  Next.js API routes
+  Google Sheets XLSX reader
+  WhatsApp Cloud API sender
+  RSVP link and webhook handlers
 ```
 
-The backend must run on a persistent Node host because `whatsapp-web.js` needs a live browser session and QR-based authentication. Vercel is only for the frontend.
+There is no separate Express API, Prisma database, SQLite file, QR session, or `whatsapp-web.js` process in the rebuilt app.
 
 ## Setup
 
 ```powershell
 pnpm.cmd install
-Copy-Item apps\api\.env.example apps\api\.env
-Copy-Item apps\web\.env.example apps\web\.env.local
-pnpm.cmd prisma:generate
-pnpm.cmd db:push
-pnpm.cmd db:seed
 pnpm.cmd dev
 ```
 
-Default URLs:
+Default login:
 
 ```text
-Web: http://localhost:3000
-API: http://localhost:4100
+username: admin
+password: admin123
 ```
 
-## Core Flow
-
-1. Upload `.xlsx` or `.csv` contacts, or import contacts directly from a Google Sheet URL.
-2. Create an English-primary template with placeholders like `{{name}}`, `{{date}}`, `{{venue}}`, `{{rsvp_link}}`.
-3. Upload optional media.
-4. Create a campaign.
-5. Choose a sending provider in App Settings.
-6. Personal mode: start the WhatsApp session and scan the QR code.
-7. Meta mode: enter Meta phone number ID, access token, app secret, verify token, and template settings.
-8. Preview and send sequentially with rate limiting.
-9. Recipients click RSVP links.
-10. Dashboard tracks sent, failed, yes, no, and pending.
-
-## Google Sheet Contacts
-
-The Contacts panel accepts a Google Sheet edit/share URL and imports the first tab as CSV.
-
-Required columns:
+Override with:
 
 ```text
-Name,Number
+APP_USERNAME
+APP_PASSWORD
+AUTH_SECRET
 ```
 
-Also accepted:
+## Google Sheets
+
+Paste any public Google Sheets share/edit URL and click `Detect Tabs`.
+
+The app reads XLSX export first, so it detects all worksheet tabs by their real names. It accepts English and Arabic name/phone headers, including:
 
 ```text
-name,phone
-name,whatsapp
-guest,mobile
+Name, Number, Phone, Mobile, WhatsApp, Guest Name
+الاسم, رقم الهاتف, الموبايل, الجوال, واتساب
 ```
 
-Extra columns are stored as custom fields and can be used as template placeholders.
+No tab is imported by default. You must check the exact tabs and click `Import Checked Tabs`.
 
-## Sending Providers
+## WhatsApp
 
-Personal number mode:
+The rebuilt app uses the official Meta WhatsApp Cloud API.
 
-- Uses `whatsapp-web.js`
-- Requires QR scan
-- Works with a personal WhatsApp number
-- Needs a persistent backend process
-- Higher ban risk for bulk sending
+Required environment or dashboard settings:
 
-Meta WhatsApp Business API mode:
+```text
+META_GRAPH_VERSION=v23.0
+META_PHONE_NUMBER_ID=
+META_ACCESS_TOKEN=
+META_VERIFY_TOKEN=hamza-shouq-webhook
+WHATSAPP_SENDER_PHONE=962795941263
+NEXT_PUBLIC_SITE_URL=https://web-zsfaouris-projects.vercel.app
+```
 
-- Uses the official Graph API
-- Requires a Meta app and WhatsApp Business Account
-- Requires `META_PHONE_NUMBER_ID`, `META_ACCESS_TOKEN`, `META_APP_SECRET`, and webhook `META_VERIFY_TOKEN`
-- No QR scan
-- Outbound campaign sends usually need approved WhatsApp message templates
+Campaign sending is blocked unless rows are checked and the confirmation text is exactly:
+
+```text
+SEND SELECTED
+```
+
+## RSVP
+
+Every prepared message includes:
+
+```text
+{{attending_link}}
+{{not_attending_link}}
+```
+
+Clicks update the dashboard through `/rsvp/[token]`. WhatsApp inbound text/button replies can also update RSVP through:
+
+```text
+/api/whatsapp/webhook
+```
+
+## Persistence
+
+Local development writes to:
+
+```text
+apps/web/.data/app-state.json
+```
+
+For Vercel persistence, create `public.hs_app_state` using:
+
+```text
+docs/SUPABASE_SCHEMA.sql
+```
+
+Then set:
+
+```text
+SUPABASE_URL
+SUPABASE_SERVICE_ROLE_KEY
+```
 
 ## Validation
 
 ```powershell
+pnpm.cmd test
 pnpm.cmd typecheck
+pnpm.cmd lint
 pnpm.cmd build
-```
-
-## Documentation
-
-Full build and deployment notes:
-
-```text
-docs/PROJECT_PLAN.md
-docs/PROJECT_STATUS.md
-docs/CLAUDE_HANDOFF.md
 ```

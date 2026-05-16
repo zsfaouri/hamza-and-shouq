@@ -1,34 +1,67 @@
 # WhatsApp Business Sender Setup
 
-## Required sender
+## Sender Number
 
-- Local number: `0795941263`
-- International format: `+962795941263`
-- The app blocks sends unless the linked WhatsApp account matches `+962795941263`.
+Use the new sender:
 
-## Phone setup
+```text
+0795941263
++962795941263
+```
 
-1. Put the SIM for `0795941263` in a phone that can receive SMS or calls.
-2. Install WhatsApp Business.
-3. Register `0795941263`.
-4. Set the business name to `Hamza & Shouq Wedding`.
-5. Set the category to `Event Planner` or the closest available category.
-6. Add a profile photo or invitation image if available.
-7. Do not scan the dashboard QR from any other WhatsApp account.
+## Meta WhatsApp Cloud API
 
-## App linking
+1. Create or open the Meta app connected to the WhatsApp Business Account.
+2. Add the phone number `+962795941263`.
+3. Copy the Phone Number ID.
+4. Create a permanent or long-lived access token with WhatsApp send permissions.
+5. Add the webhook URL:
 
-1. Open the dashboard WhatsApp section.
-2. Confirm Required sender number is `0795941263`.
-3. Click Start Session.
-4. In WhatsApp Business, open Linked Devices.
-5. Scan the QR shown by the dashboard.
-6. Confirm the dashboard shows Sending from `+962795941263`.
+```text
+https://web-zsfaouris-projects.vercel.app/api/whatsapp/webhook
+```
 
-## Send rule
+6. Use the verify token saved in the dashboard or env:
 
-Never send a campaign while the dashboard shows any other sender number. The API will reject it, but the sender must still be checked before preparing a real campaign.
+```text
+META_VERIFY_TOKEN=hamza-shouq-webhook
+```
 
-## Media
+7. Subscribe webhook fields for messages.
 
-Template media uploads now use the API upload endpoint and return local URLs like `http://localhost:4100/uploads/...` for local testing. Do not use `attached://...` values in saved templates.
+## App Settings
+
+Set these in Vercel or in the dashboard:
+
+```text
+META_GRAPH_VERSION=v23.0
+META_PHONE_NUMBER_ID=
+META_ACCESS_TOKEN=
+META_VERIFY_TOKEN=hamza-shouq-webhook
+WHATSAPP_SENDER_PHONE=962795941263
+NEXT_PUBLIC_SITE_URL=https://web-zsfaouris-projects.vercel.app
+```
+
+## Send Safety
+
+The app does not have an import-all action.
+
+The app does not send after import.
+
+The send route requires:
+
+- checked message rows
+- exact confirmation text `SEND SELECTED`
+- configured Meta phone number ID and access token
+
+## RSVP
+
+Template variables:
+
+```text
+{{attending_link}}
+{{not_attending_link}}
+{{rsvp_link}}
+```
+
+Clicking a link updates the dashboard. Incoming WhatsApp replies like `yes`, `attending`, `no`, or `not attending` are parsed by the webhook and recorded against the matching phone number.

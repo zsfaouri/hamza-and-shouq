@@ -1,8 +1,8 @@
 import { clearSessionCookie } from "@/lib/auth";
-import { json } from "@/lib/vercel-api-store";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST() {
-  return json({ ok: true }, { headers: { "Set-Cookie": clearSessionCookie() } });
+  return Response.json({ ok: true }, { headers: { "Set-Cookie": clearSessionCookie() } });
 }

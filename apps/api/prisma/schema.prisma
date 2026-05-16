@@ -7,6 +7,11 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// SQLite note: enums work (Prisma validates client-side, stores as string).
+// String[] not supported in SQLite — stored as JSON-encoded strings.
+// Decimal not supported — stored as Float.
+// Json supported (stored as text).
+
 enum CampaignStatus {
   DRAFT
   READY
@@ -27,49 +32,120 @@ enum RsvpResponse {
   NO
 }
 
+enum BudgetRole {
+  ADMIN
+  VIEWER
+}
+
+enum BudgetAction {
+  CREATE_EXPENSE
+  UPDATE_EXPENSE
+  DELETE_EXPENSE
+  ADD_PAYMENT
+  DELETE_PAYMENT
+  UPDATE_BUDGET
+  GRANT_PERMISSION
+  REVOKE_PERMISSION
+  EXPORT_BUDGET
+}
+
+enum ReminderType {
+  CONFIRMED
+  PENDING
+  CONFIRMED_AND_PENDING
+}
+
+enum ReminderStatus {
+  DRAFT
+  SCHEDULED
+  RESCHEDULED
+  SENDING
+  SENT
+  FAILED
+  CANCELLED
+}
+
+enum ReminderSendStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+enum ReminderAction {
+  CREATED
+  SCHEDULED
+  RESCHEDULED
+  CANCELLED
+  SENDING_STARTED
+  SENDING_COMPLETED
+  RECIPIENT_SKIPPED
+  RECIPIENT_FAILED
+}
+
 model Contact {
-  id            String      @id @default(cuid())
+  id            String              @id @default(cuid())
   campaignId    String?
-  campaign      Campaign?   @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaign      Campaign?           @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   name          String
   phone         String
-  customFields  String      @default("{}")
+  customFields  String              @default("{}")
   sourceTab     String?
   listOwner     String?
   importBatchId String?
   importedAt    DateTime?
   messages      Message[]
   rsvpTokens    RsvpToken[]
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  reminders     ReminderRecipient[]
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
 
   @@index([phone])
+  @@index([campaignId])
   @@index([sourceTab])
   @@index([campaignId, sourceTab])
 }
 
 model Template {
-  id           String     @id @default(cuid())
-  name         String
-  bodyEn       String
-  bodyAr       String?
-  mediaUrl     String?
-  mediaType    String?
-  campaigns    Campaign[]
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  id                   String             @id @default(cuid())
+  name                 String
+  type                 String             @default("wedding_invitation")
+  languageMode         String             @default("english_only")
+  bodyEn               String
+  bodyAr               String?
+  mediaUrl             String?
+  mediaType            String?
+  guestNameMode        String             @default("auto")
+  manualGuestName      String?
+  attendeesCountMode   String             @default("none")
+  manualAttendeesCount String?
+  includeRsvpLink      Boolean            @default(true)
+  includeLocationLink  Boolean            @default(false)
+  includeMedia         Boolean            @default(false)
+  locationLink         String?
+  hostNames            String?
+  weddingDate          String?
+  venue                String?
+  variablesUsed        String             @default("[]")
+  createdBy            String?
+  campaigns            Campaign[]
+  reminders            ReminderCampaign[]
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  @@index([createdBy])
 }
 
 model Campaign {
-  id          String          @id @default(cuid())
+  id          String         @id @default(cuid())
   name        String
   templateId  String?
-  template    Template?       @relation(fields: [templateId], references: [id], onDelete: SetNull)
-  status      CampaignStatus  @default(DRAFT)
-  totalCount  Int             @default(0)
-  sentCount   Int             @default(0)
-  failedCount Int             @default(0)
-  createdAt   DateTime        @default(now())
+  template    Template?      @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  status      CampaignStatus @default(DRAFT)
+  totalCount  Int            @default(0)
+  sentCount   Int            @default(0)
+  failedCount Int            @default(0)
+  createdAt   DateTime       @default(now())
   sentAt      DateTime?
   contacts    Contact[]
   messages    Message[]
@@ -103,4 +179,198 @@ model RsvpToken {
   clickedAt DateTime?
   response  RsvpResponse?
   createdAt DateTime      @default(now())
+}
+
+// ── Budget ──────────────────────────────────────────────────
+// Decimal stored as Float (SQLite has no native Decimal type).
+// All budget amounts are in JOD with 3 decimal places in display only.
+
+model Budget {
+  id          String             @id @default(cuid())
+  totalBudget Float              @default(0)
+  currency    String             @default("JOD")
+  notes       String?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  categories  BudgetCategory[]
+  vendors     Vendor[]
+  expenses    Expense[]
+  payments    Payment[]
+  permissions BudgetPermission[]
+  auditLogs   BudgetAuditLog[]
+}
+
+model BudgetCategory {
+  id        String    @id @default(cuid())
+  budgetId  String
+  budget    Budget    @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  name      String
+  cap       Float?
+  color     String?
+  vendors   Vendor[]
+  expenses  Expense[]
+  createdAt DateTime  @default(now())
+
+  @@index([budgetId])
+}
+
+model Vendor {
+  id            String          @id @default(cuid())
+  budgetId      String
+  budget        Budget          @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  categoryId    String?
+  category      BudgetCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  name          String
+  contactPerson String?
+  phone         String?
+  agreedPrice   Float           @default(0)
+  contractUrl   String?
+  notes         String?
+  expenses      Expense[]
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([budgetId])
+  @@index([categoryId])
+}
+
+model Expense {
+  id          String          @id @default(cuid())
+  budgetId    String
+  budget      Budget          @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  categoryId  String?
+  category    BudgetCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  vendorId    String?
+  vendor      Vendor?         @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  description String
+  totalAmount Float
+  dueDate     DateTime?
+  notes       String?
+  createdBy   String
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  payments    Payment[]
+
+  @@index([budgetId])
+  @@index([budgetId, categoryId])
+  @@index([dueDate])
+}
+
+model Payment {
+  id         String   @id @default(cuid())
+  budgetId   String
+  budget     Budget   @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  expenseId  String
+  expense    Expense  @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  amount     Float
+  paidAt     DateTime
+  method     String   @default("cash")
+  paidBy     String
+  receiptUrl String?
+  notes      String?
+  createdAt  DateTime @default(now())
+
+  @@index([budgetId])
+  @@index([expenseId])
+  @@index([paidBy])
+}
+
+model BudgetPermission {
+  id        String     @id @default(cuid())
+  budgetId  String
+  budget    Budget     @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  userKey   String
+  role      BudgetRole @default(VIEWER)
+  grantedAt DateTime   @default(now())
+  grantedBy String?
+
+  @@unique([budgetId, userKey])
+  @@index([userKey])
+}
+
+model BudgetAuditLog {
+  id        String       @id @default(cuid())
+  budgetId  String
+  budget    Budget       @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  actorKey  String
+  action    BudgetAction
+  entityId  String?
+  before    String?
+  after     String?
+  createdAt DateTime     @default(now())
+
+  @@index([budgetId, createdAt])
+  @@index([actorKey])
+}
+
+// ── Reminders ────────────────────────────────────────────────
+// targetSourceTabs stored as JSON-encoded string (SQLite has no array type).
+
+model ReminderCampaign {
+  id               String                  @id @default(cuid())
+  name             String
+  reminderType     ReminderType
+  templateId       String
+  template         Template                @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  targetSourceTabs String                  @default("[]")
+  scheduledAt      DateTime
+  timezone         String                  @default("Asia/Amman")
+  status           ReminderStatus          @default(DRAFT)
+  createdBy        String
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+  cancelledAt      DateTime?
+  cancelledBy      String?
+  recipients       ReminderRecipient[]
+  rescheduleLogs   ReminderRescheduleLog[]
+  auditLogs        ReminderAuditLog[]
+
+  @@index([status])
+  @@index([scheduledAt])
+  @@index([createdBy])
+}
+
+model ReminderRecipient {
+  id                       String             @id @default(cuid())
+  reminderCampaignId       String
+  reminderCampaign         ReminderCampaign   @relation(fields: [reminderCampaignId], references: [id], onDelete: Cascade)
+  contactId                String
+  contact                  Contact            @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  phone                    String
+  name                     String
+  sourceTab                String?
+  rsvpStatusAtScheduleTime String
+  sendStatus               ReminderSendStatus @default(PENDING)
+  sentAt                   DateTime?
+  failedReason             String?
+  createdAt                DateTime           @default(now())
+
+  @@index([reminderCampaignId])
+  @@index([reminderCampaignId, sendStatus])
+  @@index([contactId])
+}
+
+model ReminderRescheduleLog {
+  id                 String           @id @default(cuid())
+  reminderCampaignId String
+  reminderCampaign   ReminderCampaign @relation(fields: [reminderCampaignId], references: [id], onDelete: Cascade)
+  oldScheduledAt     DateTime
+  newScheduledAt     DateTime
+  changedBy          String
+  changedAt          DateTime         @default(now())
+  reason             String?
+
+  @@index([reminderCampaignId])
+}
+
+model ReminderAuditLog {
+  id                 String           @id @default(cuid())
+  reminderCampaignId String
+  reminderCampaign   ReminderCampaign @relation(fields: [reminderCampaignId], references: [id], onDelete: Cascade)
+  action             ReminderAction
+  performedBy        String
+  metadata           String?
+  createdAt          DateTime         @default(now())
+
+  @@index([reminderCampaignId, createdAt])
 }

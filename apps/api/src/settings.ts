@@ -6,6 +6,7 @@ export type WhatsAppProvider = "personal" | "meta";
 export type AppSettings = {
   provider: WhatsAppProvider;
   defaultCountryCode: string;
+  personalSenderPhone: string;
   meta: {
     graphVersion: string;
     phoneNumberId: string;
@@ -23,6 +24,7 @@ const settingsPath = join(process.cwd(), "app-settings.json");
 const defaultSettings: AppSettings = {
   provider: (process.env.WHATSAPP_PROVIDER as WhatsAppProvider) || "personal",
   defaultCountryCode: process.env.DEFAULT_COUNTRY_CODE || "962",
+  personalSenderPhone: process.env.PERSONAL_SENDER_PHONE || "",
   meta: {
     graphVersion: process.env.META_GRAPH_VERSION || "v23.0",
     phoneNumberId: process.env.META_PHONE_NUMBER_ID || "",

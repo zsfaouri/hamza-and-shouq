@@ -20,10 +20,13 @@ export function AccessClient({ currentUser, initialUsers, lists }: {
 }) {
   const toEditable = (user: SessionUser): EditableUser => ({
     id: user.id,
+    key: user.key,
     name: user.name,
     username: user.username,
     role: user.role,
     allowedTabs: user.allowedTabs,
+    canViewReminders: user.canViewReminders,
+    canManageReminders: user.canManageReminders,
     active: user.active,
   });
   const [users, setUsers] = useState<EditableUser[]>(initialUsers.map(toEditable));
@@ -126,6 +129,30 @@ export function AccessClient({ currentUser, initialUsers, lists }: {
                     {list}
                   </label>
                 ))}
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(user.canViewReminders)}
+                    disabled={user.role === "shouq"}
+                    onChange={(event) => updateUser(user.id, {
+                      canViewReminders: event.target.checked,
+                      canManageReminders: event.target.checked ? user.canManageReminders : false,
+                    })}
+                  />
+                  View reminders
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(user.canManageReminders)}
+                    disabled={user.role === "shouq"}
+                    onChange={(event) => updateUser(user.id, {
+                      canManageReminders: event.target.checked,
+                      canViewReminders: event.target.checked ? true : user.canViewReminders,
+                    })}
+                  />
+                  Manage reminders
+                </label>
               </div>
             </article>
           ))}
@@ -137,13 +164,13 @@ export function AccessClient({ currentUser, initialUsers, lists }: {
         <div className="access-matrix-wrap">
           <table className="tbl access-matrix">
             <thead>
-              <tr><th>Role</th><th>Lists</th><th>Read</th><th>Import</th><th>Prepare</th><th>Send</th><th>Access</th></tr>
+              <tr><th>Role</th><th>Lists</th><th>Read</th><th>Import</th><th>Prepare</th><th>Send</th><th>Access</th><th>Reminders</th></tr>
             </thead>
             <tbody>
-              <tr><td>Admin</td><td>All</td><td>All</td><td>All</td><td>All</td><td>All</td><td>Manage</td></tr>
-              <tr><td>Zein Admin</td><td>Assigned only</td><td>Assigned</td><td>Assigned</td><td>Assigned</td><td>Assigned</td><td>None</td></tr>
-              <tr><td>Hamza</td><td>All</td><td>All</td><td>None</td><td>None</td><td>None</td><td>None</td></tr>
-              <tr><td>Shouq</td><td>Shouq only</td><td>Shouq</td><td>None</td><td>None</td><td>None</td><td>None</td></tr>
+              <tr><td>Admin</td><td>All</td><td>All</td><td>All</td><td>All</td><td>All</td><td>Manage</td><td>Manage</td></tr>
+              <tr><td>Zein Admin</td><td>Assigned only</td><td>Assigned</td><td>Assigned</td><td>Assigned</td><td>Assigned</td><td>None</td><td>Assigned</td></tr>
+              <tr><td>Hamza</td><td>All</td><td>All</td><td>None</td><td>None</td><td>None</td><td>None</td><td>Configurable</td></tr>
+              <tr><td>Shouq</td><td>Shouq only</td><td>Shouq</td><td>None</td><td>None</td><td>None</td><td>None</td><td>None</td></tr>
             </tbody>
           </table>
         </div>

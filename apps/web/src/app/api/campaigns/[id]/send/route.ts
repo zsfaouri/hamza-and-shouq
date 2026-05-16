@@ -1,14 +1,16 @@
 import { filterMessagesForUser, userCanReadSourceTab } from "@/lib/access-control";
 import { forbidden, unauthorized, userFromRequest } from "@/lib/auth";
-import { sendPersonalWhatsAppMessage } from "@/lib/personal-whatsapp";
 import {
+  assertPersonalReady,
   ensureStarterCampaignContactsFromGoogleSheet,
   hydrateStore,
   json,
   persistStore,
   prepareCampaignMessages,
   sendMetaMessage,
+  sendPersonalMessage,
   settings,
+  templateMediaUrl,
 } from "@/lib/vercel-api-store";
 
 export const dynamic = "force-dynamic";
@@ -23,17 +25,30 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
   if (!user.permissions.canSendMessages) return forbidden();
   const campaign = data.campaigns.find((item) => item.id === id);
   if (!campaign) return json({ error: "Campaign not found" }, { status: 404 });
+  const provider = settings().provider;
+  if (provider === "personal") {
+    try {
+      await assertPersonalReady();
+    } catch (error) {
+      const visible = filterMessagesForUser(campaign.messages, user);
+      return json({
+        queued: visible.filter((message) => message.status === "PENDING").length,
+        sent: visible.filter((message) => message.status === "SENT").length,
+        failed: visible.filter((message) => message.status === "FAILED").length,
+        error: error instanceof Error ? error.message : "WhatsApp is not ready",
+      }, { status: 409 });
+    }
+  }
   await ensureStarterCampaignContactsFromGoogleSheet(campaign);
   if (!campaign.messages.length) prepareCampaignMessages(campaign, (contact) => userCanReadSourceTab(user, contact.sourceTab));
-  const provider = settings().provider;
-  campaign.status = "SENDING";
   const pending = filterMessagesForUser(campaign.messages, user).filter((item) => item.status === "PENDING");
+  campaign.status = "SENDING";
   for (const message of pending) {
     try {
       if (provider === "personal") {
-        await sendPersonalWhatsAppMessage(message.contact.phone, message.body);
+        await sendPersonalMessage(message.contact.phone, message.body);
       } else {
-        await sendMetaMessage(message.contact.phone, message.body, campaign.template?.mediaUrl);
+        await sendMetaMessage(message.contact.phone, message.body, templateMediaUrl(campaign.template));
       }
       message.status = "SENT";
       message.error = null;

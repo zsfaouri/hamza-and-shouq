@@ -11,6 +11,10 @@ export type AccessPermissions = {
   canPrepareMessages: boolean;
   canSendMessages: boolean;
   canManageWhatsApp: boolean;
+  canAccessBudgetTracker: boolean;
+  canManageBudgetPermissions: boolean;
+  canViewReminders: boolean;
+  canManageReminders: boolean;
   readOnly: boolean;
 };
 
@@ -21,10 +25,13 @@ export type AccessUserRecord = {
   password: string;
   role: AccessRole;
   allowedTabs: string[];
+  canViewReminders?: boolean;
+  canManageReminders?: boolean;
   active: boolean;
 };
 
 export type SessionUser = Omit<AccessUserRecord, "password"> & {
+  key: string;
   permissions: AccessPermissions;
 };
 
@@ -36,6 +43,8 @@ export const DEFAULT_ACCESS_USERS: AccessUserRecord[] = [
     password: "admin123",
     role: "admin",
     allowedTabs: [...SHEET_LISTS],
+    canViewReminders: true,
+    canManageReminders: true,
     active: true,
   },
   {
@@ -45,6 +54,8 @@ export const DEFAULT_ACCESS_USERS: AccessUserRecord[] = [
     password: "zein123",
     role: "zein-admin",
     allowedTabs: ["Zein"],
+    canViewReminders: true,
+    canManageReminders: true,
     active: true,
   },
   {
@@ -54,6 +65,8 @@ export const DEFAULT_ACCESS_USERS: AccessUserRecord[] = [
     password: "hamza123",
     role: "hamza",
     allowedTabs: [...SHEET_LISTS],
+    canViewReminders: true,
+    canManageReminders: false,
     active: true,
   },
   {
@@ -63,6 +76,8 @@ export const DEFAULT_ACCESS_USERS: AccessUserRecord[] = [
     password: "shouq123",
     role: "shouq",
     allowedTabs: ["Shouq"],
+    canViewReminders: false,
+    canManageReminders: false,
     active: true,
   },
 ];
@@ -90,6 +105,10 @@ export function permissionsForRole(role: AccessRole): AccessPermissions {
       canPrepareMessages: true,
       canSendMessages: true,
       canManageWhatsApp: true,
+      canAccessBudgetTracker: true,
+      canManageBudgetPermissions: true,
+      canViewReminders: true,
+      canManageReminders: true,
       readOnly: false,
     };
   }
@@ -104,6 +123,10 @@ export function permissionsForRole(role: AccessRole): AccessPermissions {
       canPrepareMessages: true,
       canSendMessages: true,
       canManageWhatsApp: false,
+      canAccessBudgetTracker: false,
+      canManageBudgetPermissions: false,
+      canViewReminders: true,
+      canManageReminders: true,
       readOnly: false,
     };
   }
@@ -117,19 +140,33 @@ export function permissionsForRole(role: AccessRole): AccessPermissions {
     canPrepareMessages: false,
     canSendMessages: false,
     canManageWhatsApp: false,
+    canAccessBudgetTracker: role === "hamza",
+    canManageBudgetPermissions: false,
+    canViewReminders: role === "hamza",
+    canManageReminders: false,
     readOnly: true,
   };
 }
 
-export function publicUser(user: AccessUserRecord): SessionUser {
+export function publicUser(user: Omit<AccessUserRecord, "password">, budgetRole?: "ADMIN" | "VIEWER" | null): SessionUser {
+  const permissions = permissionsForRole(user.role);
+  if (budgetRole !== undefined) {
+    permissions.canAccessBudgetTracker = Boolean(budgetRole);
+    permissions.canManageBudgetPermissions = budgetRole === "ADMIN";
+  }
+  permissions.canViewReminders = user.canViewReminders ?? permissions.canViewReminders;
+  permissions.canManageReminders = user.canManageReminders ?? permissions.canManageReminders;
   return {
     id: user.id,
+    key: user.username,
     name: user.name,
     username: user.username,
     role: user.role,
     allowedTabs: user.allowedTabs,
+    canViewReminders: permissions.canViewReminders,
+    canManageReminders: permissions.canManageReminders,
     active: user.active,
-    permissions: permissionsForRole(user.role),
+    permissions,
   };
 }
 

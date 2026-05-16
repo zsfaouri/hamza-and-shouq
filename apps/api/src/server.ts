@@ -12,10 +12,18 @@ import { saveMedia } from "./media.js";
 import { getMetaStatus, sendMetaWhatsAppMessage, verifyMetaSignature } from "./meta-whatsapp.js";
 import { remindersRouter } from "./reminders.js";
 import { startReminderScheduler } from "./reminder-scheduler.js";
+import {
+  appendRsvpActionLinks,
+  createRsvpLinks,
+  parseRsvpResponseInput,
+  recordInboundRsvpFromPhone,
+  rsvpConfirmationHtml,
+  saveRsvpTokenResponse,
+} from "./rsvp.js";
 import { getSettings, publicSettings, saveSettings } from "./settings.js";
 import { parseSpreadsheet } from "./spreadsheet.js";
 import { normalizePhone, renderTemplate, resolveVariables, templateMessageBody } from "./template.js";
-import { getWhatsAppStatus, initWhatsApp, sendWhatsAppMessage, waitForWhatsAppQr } from "./whatsapp.js";
+import { assertWhatsAppReady, getWhatsAppStatus, initWhatsApp, sendWhatsAppMessage, setIncomingWhatsAppHandler, waitForWhatsAppQr } from "./whatsapp.js";
 
 const app = express();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
@@ -48,12 +56,48 @@ function routeParam(value: string | string[] | undefined) {
 
 function parseCustomFields(value: unknown) {
   if (!value) return {};
-  if (typeof value === "object") return value as Record<string, unknown>;
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+    } catch {
+      return {};
+    }
+  }
+  if (typeof value === "object" && !Array.isArray(value)) return value as Record<string, unknown>;
   return {};
 }
 
 function jsonInput(value: Record<string, unknown>) {
   return JSON.stringify(value);
+}
+
+function selectedTemplateBody(template: { languageMode?: string | null; bodyEn: string; bodyAr?: string | null }) {
+  const bodyEn = template.bodyEn.trim();
+  const bodyAr = template.bodyAr?.trim() ?? "";
+  if (template.languageMode === "arabic_only") return bodyAr || bodyEn;
+  if (template.languageMode === "bilingual") return [bodyEn, bodyAr].filter(Boolean).join("\n\n");
+  return bodyEn || bodyAr;
+}
+
+function selectedTemplateMedia(template?: { includeMedia?: boolean | null; mediaUrl?: string | null } | null) {
+  if (!template?.includeMedia) return null;
+  const mediaUrl = template.mediaUrl?.trim();
+  if (!mediaUrl || mediaUrl.startsWith("attached://")) return null;
+  return mediaUrl;
+}
+
+async function assertExpectedPersonalSender(settings: ReturnType<typeof getSettings>) {
+  const status = await assertWhatsAppReady();
+  const expected = settings.personalSenderPhone.trim();
+  if (!expected) return status;
+  const expectedPhone = normalizePhone(expected, settings.defaultCountryCode);
+  const linkedPhone = status.accountPhone ? normalizePhone(status.accountPhone, settings.defaultCountryCode) : "";
+  if (!linkedPhone) throw new Error(`WhatsApp is ready, but the linked sender number is unknown. Required sender: ${expectedPhone}`);
+  if (linkedPhone !== expectedPhone) {
+    throw new Error(`Wrong WhatsApp sender linked. Required +${expectedPhone}, current +${linkedPhone}.`);
+  }
+  return status;
 }
 
 function escapeHtml(value: string) {
@@ -83,6 +127,33 @@ async function syncCampaignCounts(campaignId: string, status?: "READY" | "SENT" 
   });
 }
 
+function metaInboundMessageText(message: Record<string, unknown>) {
+  const text = message.text as { body?: unknown } | undefined;
+  const button = message.button as { text?: unknown; payload?: unknown } | undefined;
+  const interactive = message.interactive as {
+    button_reply?: { title?: unknown; id?: unknown };
+    list_reply?: { title?: unknown; id?: unknown };
+  } | undefined;
+  return String(
+    text?.body
+      ?? button?.text
+      ?? button?.payload
+      ?? interactive?.button_reply?.title
+      ?? interactive?.button_reply?.id
+      ?? interactive?.list_reply?.title
+      ?? interactive?.list_reply?.id
+      ?? "",
+  ).trim();
+}
+
+setIncomingWhatsAppHandler(async ({ from, body }) => {
+  const settings = getSettings();
+  const result = await recordInboundRsvpFromPhone(prisma, from, body, settings.defaultCountryCode);
+  if (result.matched) {
+    console.log(`RSVP ${result.response} recorded from WhatsApp reply by +${result.phone}`);
+  }
+});
+
 app.get("/", (_req, res) => {
   const settings = getSettings();
   res.json({
@@ -101,27 +172,36 @@ app.get("/api/settings", (_req, res) => {
 
 app.put("/api/settings", (req, res) => {
   const schema = z.object({
-    provider: z.enum(["personal", "meta"]),
-    defaultCountryCode: z.string().min(1),
+    provider: z.enum(["personal", "meta"]).optional(),
+    defaultCountryCode: z.string().min(1).optional(),
+    personalSenderPhone: z.string().optional(),
     meta: z.object({
-      graphVersion: z.string().min(1),
-      phoneNumberId: z.string().optional().default(""),
-      accessToken: z.string().optional().default(""),
-      appSecret: z.string().optional().default(""),
-      verifyToken: z.string().optional().default("hamza-shouq-webhook"),
-      sendMode: z.enum(["text", "template"]),
-      templateName: z.string().optional().default(""),
-      templateLanguage: z.string().optional().default("en_US"),
-    }),
+      graphVersion: z.string().min(1).optional(),
+      phoneNumberId: z.string().optional(),
+      accessToken: z.string().optional(),
+      appSecret: z.string().optional(),
+      verifyToken: z.string().optional(),
+      sendMode: z.enum(["text", "template"]).optional(),
+      templateName: z.string().optional(),
+      templateLanguage: z.string().optional(),
+    }).optional(),
   });
   const current = getSettings();
   const data = schema.parse(req.body);
   const next = {
-    ...data,
+    ...current,
+    provider: data.provider ?? current.provider,
+    defaultCountryCode: data.defaultCountryCode ?? current.defaultCountryCode,
+    personalSenderPhone: data.personalSenderPhone === undefined
+      ? current.personalSenderPhone
+      : data.personalSenderPhone.trim()
+        ? normalizePhone(data.personalSenderPhone, data.defaultCountryCode ?? current.defaultCountryCode)
+        : "",
     meta: {
-      ...data.meta,
-      accessToken: data.meta.accessToken === "configured" ? current.meta.accessToken : data.meta.accessToken,
-      appSecret: data.meta.appSecret === "configured" ? current.meta.appSecret : data.meta.appSecret,
+      ...current.meta,
+      ...(data.meta ?? {}),
+      accessToken: data.meta?.accessToken === "configured" ? current.meta.accessToken : data.meta?.accessToken ?? current.meta.accessToken,
+      appSecret: data.meta?.appSecret === "configured" ? current.meta.appSecret : data.meta?.appSecret ?? current.meta.appSecret,
     },
   };
   res.json(publicSettings(saveSettings(next)));
@@ -155,6 +235,7 @@ app.post("/api/whatsapp/test", async (req, res) => {
   const input = schema.parse(req.body);
   const settings = getSettings();
   try {
+    if (settings.provider === "personal") await assertExpectedPersonalSender(settings);
     const waMessage = settings.provider === "meta"
       ? await sendMetaWhatsAppMessage(input.phone, input.message, null, settings)
       : await sendWhatsAppMessage(input.phone, input.message);
@@ -164,7 +245,7 @@ app.post("/api/whatsapp/test", async (req, res) => {
       id: typeof waMessage.id === "string" ? waMessage.id : waMessage.id.id,
     });
   } catch (error) {
-    res.status(502).json({
+    res.status(settings.provider === "personal" ? 409 : 502).json({
       ok: false,
       error: error instanceof Error ? error.message : "WhatsApp test send failed",
     });
@@ -195,6 +276,12 @@ app.post("/webhook", async (req, res) => {
         if (status.status === "failed") {
           await prisma.message.update({ where: { id: message.id }, data: { status: "FAILED", error: status.errors?.[0]?.title ?? "Meta delivery failed" } });
         }
+      }
+      for (const inbound of change.value?.messages ?? []) {
+        const from = String(inbound.from ?? "");
+        const text = metaInboundMessageText(inbound);
+        if (!from || !text) continue;
+        await recordInboundRsvpFromPhone(prisma, from, text, settings.defaultCountryCode);
       }
     }
   }
@@ -314,35 +401,53 @@ app.post("/api/campaigns/:id/contacts/google-sheet", async (req, res) => {
   const importBatchId = randomUUID();
   const importedAt = new Date();
 
-  // New per-tab flow (when url is provided without a specific gid)
-  if (input.url && input.selectedTabs !== undefined) {
-    const tabs = await importGoogleSheetTabs(input.url, input.selectedTabs.length ? input.selectedTabs : undefined);
+  // Google Sheet imports are explicit tab imports only. This prevents a changed sheet
+  // from appending to an old campaign list or importing every tab by default.
+  if (input.url) {
+    const selectedTabs = (input.selectedTabs ?? []).map((tab) => tab.trim()).filter(Boolean);
+    if (!selectedTabs.length) return res.status(400).json({ error: "Select at least one detected sheet tab before importing." });
+    const tabs = await importGoogleSheetTabs(input.url, selectedTabs);
+    if (tabs.length !== selectedTabs.length) {
+      const found = new Set(tabs.map((tab) => tab.name));
+      const missing = selectedTabs.filter((tab) => !found.has(tab));
+      return res.status(400).json({ error: `Selected sheet tab not found: ${missing.join(", ")}` });
+    }
     const tabResults: Array<{ name: string; imported: number; error?: string }> = [];
     let totalImported = 0;
+    const rows: Array<{
+      campaignId: string;
+      name: string;
+      phone: string;
+      customFields: string;
+      sourceTab: string;
+      listOwner: string;
+      importBatchId: string;
+      importedAt: Date;
+    }> = [];
 
     for (const tab of tabs) {
-      try {
-        await prisma.contact.createMany({
-          data: tab.contacts.map((c) => ({
-            campaignId,
-            name: c.name,
-            phone: normalizePhone(c.phone, settings.defaultCountryCode),
-            customFields: jsonInput(c.customFields),
-            sourceTab: tab.name,
-            listOwner: tab.name,
-            importBatchId,
-            importedAt,
-          })),
-        });
-        tabResults.push({ name: tab.name, imported: tab.contacts.length });
-        totalImported += tab.contacts.length;
-      } catch (err) {
-        tabResults.push({ name: tab.name, imported: 0, error: err instanceof Error ? err.message : "Import failed" });
-      }
+      rows.push(...tab.contacts.map((c) => ({
+        campaignId,
+        name: c.name,
+        phone: normalizePhone(c.phone, settings.defaultCountryCode),
+        customFields: jsonInput(c.customFields),
+        sourceTab: tab.name,
+        listOwner: tab.name,
+        importBatchId,
+        importedAt,
+      })));
+      tabResults.push({ name: tab.name, imported: tab.contacts.length });
+      totalImported += tab.contacts.length;
     }
+    if (!rows.length) return res.status(400).json({ error: "Selected sheet tabs were readable, but no contacts with both name and phone were found. Existing campaign contacts were not changed." });
 
-    const totalCount = await prisma.contact.count({ where: { campaignId } });
-    await prisma.campaign.update({ where: { id: campaignId }, data: { totalCount, status: totalCount ? "READY" : "DRAFT" } });
+    await prisma.$transaction(async (tx) => {
+      await tx.message.deleteMany({ where: { campaignId } });
+      await tx.contact.deleteMany({ where: { campaignId } });
+      if (rows.length) await tx.contact.createMany({ data: rows });
+      await tx.campaign.update({ where: { id: campaignId }, data: { totalCount: rows.length, status: rows.length ? "READY" : "DRAFT" } });
+    });
+    const totalCount = rows.length;
     return res.json({ imported: totalImported, totalCount, importBatchId, tabs: tabResults });
   }
 
@@ -411,16 +516,17 @@ app.post("/api/campaigns/:id/prepare", async (req, res) => {
     if (existing?.status === "SENT") continue;
 
     const token = existing?.rsvpToken?.token ?? randomUUID();
-    const rsvpLink = `${apiUrl()}/rsvp/${token}`;
+    const rsvpLinks = createRsvpLinks(apiUrl(), token);
     const variables = resolveVariables({
       contact: { name: contact.name, phone: contact.phone, customFields: parseCustomFields(contact.customFields) },
       template: campaign.template,
-      rsvpLink,
+      rsvpLink: rsvpLinks.view,
+      rsvpYesLink: rsvpLinks.yes,
+      rsvpNoLink: rsvpLinks.no,
     });
-    const bodySource = campaign.template.languageMode === "arabic_only"
-      ? (campaign.template.bodyAr ?? campaign.template.bodyEn)
-      : campaign.template.bodyEn;
-    const body = renderTemplate(bodySource, variables);
+    const bodySource = selectedTemplateBody(campaign.template);
+    const renderedBody = renderTemplate(bodySource, variables);
+    const body = appendRsvpActionLinks(bodySource, renderedBody, rsvpLinks, campaign.template.includeRsvpLink);
     const message = existing
       ? await prisma.message.update({
           where: { id: existing.id },
@@ -450,6 +556,19 @@ app.post("/api/campaigns/:id/send", async (req, res) => {
   const campaign = await prisma.campaign.findUnique({ where: { id: campaignId }, include: { template: true } });
   if (!campaign) return res.status(404).json({ error: "Campaign not found" });
   if (activeSends.has(campaign.id)) return res.status(409).json({ error: "Campaign is already sending" });
+  const settings = getSettings();
+  if (settings.provider === "personal") {
+    try {
+      await assertExpectedPersonalSender(settings);
+    } catch (error) {
+      const queued = await prisma.message.count({ where: { campaignId: campaign.id, status: "PENDING" } });
+      return res.status(409).json({
+        queued,
+        delayMs,
+        error: error instanceof Error ? error.message : "WhatsApp is not ready",
+      });
+    }
+  }
 
   const pending = await prisma.message.findMany({
     where: { campaignId: campaign.id, status: "PENDING" },
@@ -470,11 +589,10 @@ app.post("/api/campaigns/:id/send", async (req, res) => {
     try {
       for (const message of pending) {
         try {
-          const settings = getSettings();
           const waMessage =
             settings.provider === "meta"
-              ? await sendMetaWhatsAppMessage(message.contact.phone, message.body, campaign.template?.mediaUrl, settings)
-              : await sendWhatsAppMessage(message.contact.phone, message.body, campaign.template?.mediaUrl);
+              ? await sendMetaWhatsAppMessage(message.contact.phone, message.body, selectedTemplateMedia(campaign.template), settings)
+              : await sendWhatsAppMessage(message.contact.phone, message.body, selectedTemplateMedia(campaign.template));
           await prisma.message.update({
             where: { id: message.id },
             data: { status: "SENT", waMessageId: typeof waMessage.id === "string" ? waMessage.id : waMessage.id.id, sentAt: new Date(), error: null },
@@ -516,7 +634,20 @@ app.get("/api/campaigns/:id/stats", async (req, res) => {
 });
 
 app.get("/rsvp/:token", async (req, res) => {
-  const token = await prisma.rsvpToken.findUnique({ where: { token: routeParam(req.params.token) }, include: { contact: true } });
+  const tokenValue = routeParam(req.params.token);
+  const requestedResponse = parseRsvpResponseInput(req.query.response);
+  if (req.query.response !== undefined && !requestedResponse) return res.status(400).send("Invalid RSVP response");
+
+  if (requestedResponse) {
+    try {
+      const saved = await saveRsvpTokenResponse(prisma, tokenValue, requestedResponse);
+      return res.send(rsvpConfirmationHtml(saved.contact.name, requestedResponse));
+    } catch {
+      return res.status(404).send("RSVP link not found");
+    }
+  }
+
+  const token = await prisma.rsvpToken.findUnique({ where: { token: tokenValue }, include: { contact: true } });
   if (!token) return res.status(404).send("RSVP link not found");
 
   res.send(`<!doctype html>
@@ -526,15 +657,14 @@ app.get("/rsvp/:token", async (req, res) => {
 });
 
 app.post("/rsvp/:token", express.urlencoded({ extended: false }), async (req, res) => {
-  const parsed = z.enum(["YES", "NO"]).safeParse(req.body.response);
-  if (!parsed.success) return res.status(400).send("Invalid RSVP response");
-  const response = parsed.data;
-  const token = await prisma.rsvpToken.update({
-    where: { token: routeParam(req.params.token) },
-    data: { response, clickedAt: new Date() },
-    include: { contact: true },
-  });
-  res.send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>RSVP Saved</title><style>body{font-family:Arial,sans-serif;background:#f6f8f5;display:grid;place-items:center;min-height:100vh;margin:0}.card{background:white;padding:32px;border-radius:18px;border:1px solid #dfe7dc}</style></head><body><main class="card"><h1>Thank you, ${escapeHtml(token.contact.name)}.</h1><p>Your response has been recorded.</p></main></body></html>`);
+  const response = parseRsvpResponseInput(req.body.response);
+  if (!response) return res.status(400).send("Invalid RSVP response");
+  try {
+    const token = await saveRsvpTokenResponse(prisma, routeParam(req.params.token), response);
+    res.send(rsvpConfirmationHtml(token.contact.name, response));
+  } catch {
+    res.status(404).send("RSVP link not found");
+  }
 });
 
 const port = Number(process.env.API_PORT ?? 4100);

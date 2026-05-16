@@ -20,10 +20,10 @@ Branch:
 main
 ```
 
-Latest pushed commit at time of documentation:
+Latest pushed commit:
 
 ```text
-f0571a5 Initial WhatsApp campaign system
+Check `git log -1 --oneline` after deployment.
 ```
 
 ## Vercel
@@ -34,10 +34,10 @@ Production frontend:
 https://web-zsfaouris-projects.vercel.app
 ```
 
-Latest verified deployment:
+Production deployment status:
 
 ```text
-https://web-7k311bb5y-zsfaouris-projects.vercel.app
+Verified through `vercel inspect https://web-zsfaouris-projects.vercel.app`.
 ```
 
 Vercel project:
@@ -82,6 +82,18 @@ Expected headers:
 Name,Number
 ```
 
+Current importer behavior:
+
+```text
+Detect Tabs reads and previews Google Sheets without importing.
+No tab is selected by default.
+There is no Import All action.
+Only checked tabs can be imported.
+An import replaces the selected campaign contacts instead of appending to stale contacts.
+If selected tabs contain no readable contacts, existing campaign contacts are left unchanged.
+XLSX export is tried first for more reliable multi-tab reads; CSV/gid fallback remains.
+```
+
 ## Verified
 
 Local checks passed:
@@ -90,6 +102,41 @@ Local checks passed:
 pnpm.cmd typecheck
 pnpm.cmd lint
 pnpm.cmd build
+```
+
+Current backend hardening:
+
+```text
+Campaign send requests now lock per campaign while active.
+Campaign sent/failed totals are synced from actual message rows.
+Prepare preserves sent message history and existing RSVP links.
+RSVP contact names are HTML-escaped and invalid form values are rejected.
+Personal WhatsApp media sends are restricted to API uploads or Cloudinary URLs.
+Personal WhatsApp sender is pinned to 962795941263.
+RSVP messages include attending/not-attending links and inbound WhatsApp replies update dashboard RSVP status.
+```
+
+## Budget Tracker And Supabase Migration
+
+Implemented locally:
+
+```text
+Prisma datasource switched to PostgreSQL in apps/api/prisma/schema.prisma.
+Budget, category, vendor, expense, payment, permission, and audit models added.
+Contact.customFields is now Json in Prisma.
+Budget Express routes are mounted at /api/budget.
+Budget seed data is added to apps/api/prisma/seed.ts.
+Generated SQL migration is stored at apps/api/prisma/migrations/20260515_supabase_init/migration.sql.
+RLS SQL backstop is stored at docs/SUPABASE_BUDGET_RLS.sql.
+Next.js /budget route, middleware gate, sidebar gate, charts, modals, permissions, audit log, and CSV export UI are implemented.
+```
+
+Migration blocker:
+
+```text
+apps/api/.env does not currently contain DIRECT_URL.
+apps/api/.env DATABASE_URL is not a PostgreSQL URL in the current local file.
+Live npx prisma migrate dev --name supabase_init cannot complete until those Supabase PostgreSQL values are present.
 ```
 
 Live Vercel checks passed:

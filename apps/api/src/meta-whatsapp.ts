@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 import type { AppSettings } from "./settings.js";
+import { normalizePhone } from "./template.js";
 
 export type MetaStatus = {
   configured: boolean;
@@ -32,13 +33,14 @@ export function verifyMetaSignature(appSecret: string, rawBody: Buffer, signatur
 export async function sendMetaWhatsAppMessage(toPhone: string, body: string, mediaUrl: string | null | undefined, settings: AppSettings) {
   const { accessToken, phoneNumberId, graphVersion, sendMode, templateName, templateLanguage } = settings.meta;
   if (!accessToken || !phoneNumberId) throw new Error("Meta WhatsApp API is not configured");
+  const to = normalizePhone(toPhone, settings.defaultCountryCode);
 
   const requestBody =
     sendMode === "template" && templateName
       ? {
           messaging_product: "whatsapp",
           recipient_type: "individual",
-          to: toPhone.replace(/[^\d]/g, ""),
+          to,
           type: "template",
           template: {
             name: templateName,
@@ -55,14 +57,14 @@ export async function sendMetaWhatsAppMessage(toPhone: string, body: string, med
         ? {
             messaging_product: "whatsapp",
             recipient_type: "individual",
-            to: toPhone.replace(/[^\d]/g, ""),
+            to,
             type: "image",
             image: { link: mediaUrl, caption: body },
           }
         : {
             messaging_product: "whatsapp",
             recipient_type: "individual",
-            to: toPhone.replace(/[^\d]/g, ""),
+            to,
             type: "text",
             text: { preview_url: true, body },
           };

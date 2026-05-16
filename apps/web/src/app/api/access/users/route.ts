@@ -9,7 +9,7 @@ export async function GET(request: Request) {
   const user = userFromRequest(request, data.accessUsers);
   if (!user) return unauthorized();
   if (!user.permissions.canManageAccess) return forbidden();
-  return json({ users: data.accessUsers.map(publicUser) });
+  return json({ users: data.accessUsers.map((record) => publicUser(record)) });
 }
 
 export async function PUT(request: Request) {
@@ -18,20 +18,33 @@ export async function PUT(request: Request) {
   if (!user) return unauthorized();
   if (!user.permissions.canManageAccess) return forbidden();
 
-  const body = await request.json() as { users?: Array<{ id?: string; role?: string; allowedTabs?: string[]; active?: boolean }> };
+  const body = await request.json() as {
+    users?: Array<{
+      id?: string;
+      role?: string;
+      allowedTabs?: string[];
+      active?: boolean;
+      canViewReminders?: boolean;
+      canManageReminders?: boolean;
+    }>;
+  };
   const updates = new Map((body.users ?? []).map((item) => [String(item.id ?? ""), item]));
   data.accessUsers = data.accessUsers.map((record) => {
     const update = updates.get(record.id);
     if (!update || record.id === user.id) return record;
     const role = normalizeRole(update.role);
+    const canManageReminders = role === "shouq" ? false : update.canManageReminders === true;
+    const canViewReminders = role === "shouq" ? false : canManageReminders || update.canViewReminders === true;
     return {
       ...record,
       role,
       active: update.active !== false,
       allowedTabs: normalizeTabs(update.allowedTabs, role),
+      canViewReminders,
+      canManageReminders,
     };
   });
 
   await persistStore();
-  return json({ users: data.accessUsers.map(publicUser) });
+  return json({ users: data.accessUsers.map((record) => publicUser(record)) });
 }

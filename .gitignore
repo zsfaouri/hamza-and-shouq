@@ -16,3 +16,9 @@ apps/api/.wwebjs_auth
 apps/api/.wwebjs_cache
 apps/api/uploads/*
 !apps/api/uploads/.gitkeep
+apps/web/.data
+.claude/
+screenshot*.png
+whatsapp-qr*.png
+
+.vercel

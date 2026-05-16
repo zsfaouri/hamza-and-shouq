@@ -3,12 +3,44 @@ import { existsSync } from "node:fs";
 import type { Client as WhatsAppClient } from "whatsapp-web.js";
 
 type SessionState = "booting" | "qr" | "ready" | "disconnected" | "disabled";
+export type IncomingWhatsAppMessage = {
+  from: string;
+  body: string;
+  messageId?: string;
+};
 
 let client: WhatsAppClient | null = null;
 let latestQr: string | null = null;
 let state: SessionState = "disabled";
 let lastError: string | null = null;
 let whatsappModule: typeof import("whatsapp-web.js") | null = null;
+let incomingHandler: ((message: IncomingWhatsAppMessage) => Promise<void> | void) | null = null;
+
+export function setIncomingWhatsAppHandler(handler: ((message: IncomingWhatsAppMessage) => Promise<void> | void) | null) {
+  incomingHandler = handler;
+}
+
+function assertAllowedMediaUrl(mediaUrl: string) {
+  let parsed: URL;
+  try {
+    parsed = new URL(mediaUrl);
+  } catch {
+    throw new Error("Media URL is invalid");
+  }
+
+  if (!["http:", "https:"].includes(parsed.protocol)) {
+    throw new Error("Media URL must use HTTP or HTTPS");
+  }
+
+  const publicApiUrl = process.env.API_PUBLIC_URL ? new URL(process.env.API_PUBLIC_URL) : null;
+  const isLocalUpload = ["localhost", "127.0.0.1", "::1"].includes(parsed.hostname) && parsed.pathname.startsWith("/uploads/");
+  const isOwnUpload = parsed.pathname.startsWith("/uploads/") && Boolean(publicApiUrl && parsed.origin === publicApiUrl.origin);
+  const isCloudinary = parsed.protocol === "https:" && parsed.hostname.endsWith(".cloudinary.com");
+
+  if (!isOwnUpload && !isLocalUpload && !isCloudinary) {
+    throw new Error("Media URL must be an uploaded file from this API or Cloudinary");
+  }
+}
 
 async function loadWhatsApp() {
   if (!whatsappModule) {
@@ -56,6 +88,26 @@ export async function initWhatsApp() {
     latestQr = null;
   });
 
+  client.on("message", async (message) => {
+    const handler = incomingHandler;
+    if (!handler) return;
+    const from = message.from ?? "";
+    if (!from.endsWith("@c.us")) return;
+    const body = message.body?.trim();
+    if (!body) return;
+
+    try {
+      await handler({
+        from: from.replace(/@c\.us$/, ""),
+        body,
+        messageId: message.id?._serialized,
+      });
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : "Incoming WhatsApp message handling failed";
+      console.error(error);
+    }
+  });
+
   client.initialize().catch((error) => {
     lastError = error instanceof Error ? error.message : "WhatsApp session failed";
     state = "disconnected";
@@ -64,7 +116,24 @@ export async function initWhatsApp() {
 
 export async function getWhatsAppStatus() {
   const qrDataUrl = latestQr ? await qrcode.toDataURL(latestQr) : null;
-  return { state, qr: qrDataUrl, error: lastError };
+  const info = client?.info;
+  return {
+    state,
+    qr: qrDataUrl,
+    error: lastError,
+    accountPhone: info?.wid?.user ?? null,
+    displayName: info?.pushname ?? null,
+  };
+}
+
+export async function assertWhatsAppReady() {
+  const status = await getWhatsAppStatus();
+  if (status.state !== "ready") {
+    throw new Error(status.qr
+      ? "WhatsApp is waiting for QR scan. Open WhatsApp Settings and scan the QR before sending."
+      : status.error ?? `WhatsApp is not ready. Current state: ${status.state}`);
+  }
+  return status;
 }
 
 export async function waitForWhatsAppQr(timeoutMs = 50_000) {
@@ -82,11 +151,16 @@ export async function waitForWhatsAppQr(timeoutMs = 50_000) {
 }
 
 export async function sendWhatsAppMessage(toPhone: string, body: string, mediaUrl?: string | null) {
-  if (!client || state !== "ready") throw new Error("WhatsApp session is not ready");
+  await assertWhatsAppReady();
+  if (!client) throw new Error("WhatsApp client is not initialized");
 
   const { MessageMedia } = await loadWhatsApp();
-  const chatId = `${toPhone.replace(/[^\d]/g, "")}@c.us`;
+  const digits = toPhone.replace(/[^\d]/g, "");
+  const numberId = await client.getNumberId(digits);
+  if (!numberId?._serialized) throw new Error(`WhatsApp number is not registered: ${digits}`);
+  const chatId = numberId._serialized;
   if (mediaUrl) {
+    assertAllowedMediaUrl(mediaUrl);
     const media = await MessageMedia.fromUrl(mediaUrl, { unsafeMime: true });
     return client.sendMessage(chatId, media, { caption: body });
   }

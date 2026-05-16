@@ -21,11 +21,67 @@ function firstValue(row: Record<string, unknown>, candidates: string[]) {
   return "";
 }
 
+const nameColumns = ["name", "name_en", "full_name", "contact", "guest", "guest name", "الاسم", "الإسم", "اسم", "الضيف", "المدعو"];
+const phoneColumns = ["phone", "mobile", "whatsapp", "number", "phone number", "tel", "رقم", "الهاتف", "رقم الهاتف", "الموبايل", "الجوال", "واتساب", "رقم الواتساب"];
+
+const nameColumnAliases = [
+  ...nameColumns,
+  "full name",
+  "contact name",
+  "invitee",
+  "الاسم",
+  "الإسم",
+  "اسم",
+  "اسم الضيف",
+  "الضيف",
+  "المدعو",
+  "الاسم الكامل",
+];
+const phoneColumnAliases = [
+  ...phoneColumns,
+  "mobile number",
+  "whatsapp number",
+  "telephone",
+  "رقم",
+  "الهاتف",
+  "رقم الهاتف",
+  "الموبايل",
+  "رقم الموبايل",
+  "الجوال",
+  "رقم الجوال",
+  "واتساب",
+  "رقم الواتساب",
+];
+
+function phoneDigits(value: unknown) {
+  const cleaned = String(value ?? "").replace(/[^\d+]/g, "");
+  if (cleaned.startsWith("+")) return cleaned.replace(/[^\d]/g, "");
+  const digits = cleaned.replace(/[^\d]/g, "");
+  if (digits.startsWith("00")) return digits.slice(2);
+  return digits;
+}
+
+function looksLikePhone(value: unknown) {
+  return phoneDigits(value).length >= 7;
+}
+
+function fallbackName(values: unknown[]) {
+  return String(values.find((value) => {
+    const text = String(value ?? "").trim();
+    return text.length > 1 && !looksLikePhone(text);
+  }) ?? "").trim();
+}
+
+function fallbackPhone(values: unknown[]) {
+  return String(values.find((value) => looksLikePhone(value)) ?? "").trim();
+}
+
 export function parseContactsFromRows(rows: Record<string, unknown>[]): ParsedContact[] {
   return rows
     .map((row) => {
-      const name = firstValue(row, ["name", "name_en", "full_name", "contact", "guest"]);
-      const phone = firstValue(row, ["phone", "mobile", "whatsapp", "number", "tel"]);
+      const values = Object.values(row);
+      const name = firstValue(row, nameColumnAliases) || fallbackName(values);
+      const phone = firstValue(row, phoneColumnAliases) || fallbackPhone(values);
       return { name, phone, customFields: row };
     })
     .filter((contact) => contact.name && contact.phone);

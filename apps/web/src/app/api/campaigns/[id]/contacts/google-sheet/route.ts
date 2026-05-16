@@ -16,11 +16,14 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const selectedTabs = Array.isArray(input.selectedTabs)
     ? input.selectedTabs.map((tab) => tab.trim()).filter(Boolean)
     : undefined;
+  if (!selectedTabs?.length) return json({ error: "Select at least one detected sheet tab before importing." }, { status: 400 });
   if (selectedTabs && !userCanImportTabs(user, selectedTabs)) return forbidden();
   const preview = await readGoogleSheetPreview({ ...input, selectedTabs });
-  if (!selectedTabs && user.role !== "admin") {
-    const previewTabs = preview.worksheets.map((worksheet) => worksheet.title);
-    if (!userCanImportTabs(user, previewTabs)) return forbidden();
+  if (!preview.contacts.length) {
+    return json(
+      { error: "Selected sheet tabs were readable, but no contacts with both name and phone were found. Existing campaign contacts were not changed." },
+      { status: 400 },
+    );
   }
   const importBatchId = crypto.randomUUID();
   const importedAt = new Date().toISOString();

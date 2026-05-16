@@ -1,6 +1,7 @@
 import { parse } from "csv-parse/sync";
 import { parseContactsFromRows, type ParsedContact } from "./spreadsheet.js";
 import https from "node:https";
+import xlsx from "xlsx";
 
 const SHEET_ID_PATTERN = /\/spreadsheets\/d\/([^/]+)/i;
 const GID_PATTERN = /[#?&]gid=([0-9]+)/i;
@@ -13,6 +14,7 @@ type GoogleSheetWorksheet = {
 type GoogleSheetWorksheetSummary = GoogleSheetWorksheet & {
   rowCount: number;
   contactCount: number;
+  preview: Array<{ name: string; phone: string }>;
 };
 
 export function sheetIdFromUrl(url: string) {
@@ -84,6 +86,53 @@ function googleSheetPreviewFromCsv(buffer: Buffer, sheetTitle?: string) {
   };
 }
 
+function sheetHeaders(sheet: xlsx.WorkSheet) {
+  const rows = xlsx.utils.sheet_to_json<unknown[]>(sheet, { header: 1, blankrows: false, defval: "" });
+  return (rows[0] ?? []).map((value) => String(value).trim()).filter(Boolean);
+}
+
+export function googleSheetPreviewFromWorkbook(buffer: Buffer, selectedTabNames?: string[]) {
+  const workbook = xlsx.read(buffer, { type: "buffer" });
+  const selected = new Set((selectedTabNames ?? []).map((tab) => tab.trim()).filter(Boolean));
+  const sheetNames = selected.size
+    ? workbook.SheetNames.filter((title, index) => selected.has(title) || selected.has(`sheet:${index}`))
+    : workbook.SheetNames;
+
+  const previews = sheetNames.map((title) => {
+    const sheet = workbook.Sheets[title];
+    const rows = xlsx.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
+    const contacts = parseContactsFromRows(rows).map((contact) => ({
+      ...contact,
+      customFields: { ...contact.customFields, sheet: title, sourceTab: title },
+    }));
+    return {
+      worksheet: { title, gid: `sheet:${workbook.SheetNames.indexOf(title)}` },
+      headers: sheetHeaders(sheet),
+      contacts,
+      rowCount: rows.length,
+    };
+  });
+
+  return {
+    headers: mergeHeaders(previews),
+    contacts: previews.flatMap((preview) => preview.contacts),
+    worksheets: previews.map((preview) => ({
+      title: preview.worksheet.title,
+      gid: preview.worksheet.gid,
+      rowCount: preview.rowCount,
+      contactCount: preview.contacts.length,
+      preview: preview.contacts.slice(0, 5).map((contact) => ({ name: contact.name, phone: contact.phone })),
+    })),
+  };
+}
+
+async function readGoogleSheetWorkbookPreview(sheetId: string, selectedTabNames?: string[]) {
+  const url = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(sheetId)}/export?format=xlsx`;
+  const buffer = await readUrlBuffer(url);
+  if (isGoogleHtmlError(buffer)) throw new Error("Google returned an HTML page instead of an XLSX workbook");
+  return googleSheetPreviewFromWorkbook(buffer, selectedTabNames);
+}
+
 async function readUrlBuffer(url: string): Promise<Buffer> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15_000);
@@ -101,8 +150,27 @@ async function readUrlBuffer(url: string): Promise<Buffer> {
   }
 }
 
-async function readGoogleSheetCsv(sheetId: string, gid: string): Promise<Buffer> {
-  return readUrlBuffer(`https://docs.google.com/spreadsheets/d/${encodeURIComponent(sheetId)}/export?format=csv&gid=${encodeURIComponent(gid)}`);
+function isGoogleHtmlError(buffer: Buffer) {
+  const start = buffer.toString("utf8", 0, Math.min(buffer.length, 64));
+  return /^\s*<!doctype html/i.test(start) || /^\s*<html/i.test(start);
+}
+
+async function readGoogleSheetCsv(sheetId: string, gid: string, sheetTitle?: string): Promise<Buffer> {
+  const urls = [
+    `https://docs.google.com/spreadsheets/d/${encodeURIComponent(sheetId)}/export?format=csv&gid=${encodeURIComponent(gid)}`,
+    ...(sheetTitle ? [`https://docs.google.com/spreadsheets/d/${encodeURIComponent(sheetId)}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetTitle)}`] : []),
+  ];
+  let lastError: unknown;
+  for (const url of urls) {
+    try {
+      const buffer = await readUrlBuffer(url);
+      if (!isGoogleHtmlError(buffer)) return buffer;
+      lastError = new Error("Google returned an HTML page instead of CSV");
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("Google Sheet CSV read failed");
 }
 
 function normalizeKey(value: string) {
@@ -161,22 +229,17 @@ export async function detectGoogleSheetTabs(url: string): Promise<{ sheetId: str
   const sheetId = sheetIdFromUrl(url.trim());
   if (!sheetId) throw new Error("Invalid Google Sheets URL — could not extract sheet ID.");
 
-  const worksheets = await readGoogleSheetWorksheets(sheetId);
-  const targets = worksheets.length ? worksheets : [{ title: "Sheet 1", gid: "0" }];
-
-  const tabs = await Promise.all(targets.map(async (ws): Promise<SheetTabDetected> => {
-    const buf = await readGoogleSheetCsv(sheetId, ws.gid);
-    const { contacts, rowCount } = googleSheetPreviewFromCsv(buf, ws.title);
-    return {
-      name: ws.title,
-      gid: ws.gid,
-      rowCount,
-      contactCount: contacts.length,
-      preview: contacts.slice(0, 5).map((c) => ({ name: c.name, phone: c.phone })),
-    };
-  }));
-
-  return { sheetId, tabs };
+  const preview = await readGoogleSheetPreview({ url, sheetId });
+  return {
+    sheetId,
+    tabs: preview.worksheets.map((worksheet) => ({
+      name: worksheet.title,
+      gid: worksheet.gid,
+      rowCount: worksheet.rowCount,
+      contactCount: worksheet.contactCount,
+      preview: worksheet.preview,
+    })),
+  };
 }
 
 export async function importGoogleSheetTabs(
@@ -185,32 +248,38 @@ export async function importGoogleSheetTabs(
 ): Promise<SheetTabWithContacts[]> {
   const sheetId = sheetIdFromUrl(url.trim());
   if (!sheetId) throw new Error("Invalid Google Sheets URL.");
-
-  const worksheets = await readGoogleSheetWorksheets(sheetId);
-  const targets = worksheets.length ? worksheets : [{ title: "Sheet 1", gid: "0" }];
-  const filtered = selectedTabNames
-    ? targets.filter((ws) => selectedTabNames.includes(ws.title))
-    : targets;
-
-  return Promise.all(filtered.map(async (ws) => {
-    const buf = await readGoogleSheetCsv(sheetId, ws.gid);
-    const { contacts } = googleSheetPreviewFromCsv(buf, ws.title);
-    return { name: ws.title, gid: ws.gid, contacts };
+  const preview = await readGoogleSheetPreview({ url, sheetId, selectedTabs: selectedTabNames });
+  return preview.worksheets.map((worksheet) => ({
+    name: worksheet.title,
+    gid: worksheet.gid,
+    contacts: preview.contacts.filter((contact) => contact.customFields.sheet === worksheet.title || contact.customFields.sourceTab === worksheet.title),
   }));
 }
 
-export async function readGoogleSheetPreview(input: { url?: string; sheetId?: string; gid?: string }) {
+export async function readGoogleSheetPreview(input: { url?: string; sheetId?: string; gid?: string; selectedTabs?: string[] }) {
   const sourceUrl = input.url?.trim() ?? "";
   const sheetId = input.sheetId?.trim() || sheetIdFromUrl(sourceUrl);
-  const explicitGid = input.gid?.trim();
+  const explicitGid = input.gid?.trim() || gidFromUrl(sourceUrl);
   if (!sheetId) throw new Error("Missing Google Sheet ID or URL");
+
+  if (!explicitGid) {
+    try {
+      return await readGoogleSheetWorkbookPreview(sheetId, input.selectedTabs);
+    } catch {
+      // Fall back to CSV tab scraping below for sheets where XLSX export is disabled.
+    }
+  }
 
   const worksheets = explicitGid
     ? [{ title: `gid ${explicitGid}`, gid: explicitGid }]
     : await readGoogleSheetWorksheets(sheetId);
-  const targets = worksheets.length ? worksheets : [{ title: "Sheet 1", gid: "0" }];
+  const selectedTabs = new Set((input.selectedTabs ?? []).map((tab) => tab.trim()).filter(Boolean));
+  const allTargets = worksheets.length ? worksheets : [{ title: "Sheet 1", gid: gidFromUrl(sourceUrl) || "0" }];
+  const targets = selectedTabs.size
+    ? allTargets.filter((worksheet) => selectedTabs.has(worksheet.title) || selectedTabs.has(worksheet.gid))
+    : allTargets;
   const previews = await Promise.all(targets.map(async (worksheet) => {
-    const preview = googleSheetPreviewFromCsv(await readGoogleSheetCsv(sheetId, worksheet.gid), worksheet.title);
+    const preview = googleSheetPreviewFromCsv(await readGoogleSheetCsv(sheetId, worksheet.gid, worksheet.title), worksheet.title);
     return { worksheet, ...preview };
   }));
 
@@ -222,6 +291,7 @@ export async function readGoogleSheetPreview(input: { url?: string; sheetId?: st
       gid: preview.worksheet.gid,
       rowCount: preview.rowCount,
       contactCount: preview.contacts.length,
+      preview: preview.contacts.slice(0, 5).map((contact) => ({ name: contact.name, phone: contact.phone })),
     })),
   };
 }

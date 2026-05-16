@@ -5,25 +5,56 @@ import type { FormEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { SessionUser } from "@/lib/access-control";
 import { API_URL, apiGet, apiPost, apiPut } from "@/lib/api";
+import { TemplateBuilder } from "@/components/TemplateBuilder";
 
 /* ── Types ─────────────────────────────────────────────────── */
-type Template    = { id: string; name: string; bodyEn: string; bodyAr?: string | null; mediaUrl?: string | null; mediaType?: string | null };
+type Template    = {
+  id: string; name: string; type: string; languageMode: string;
+  bodyEn: string; bodyAr?: string | null;
+  mediaUrl?: string | null; mediaType?: string | null;
+  guestNameMode: string; manualGuestName?: string | null;
+  attendeesCountMode: string; manualAttendeesCount?: string | null;
+  includeRsvpLink: boolean; includeLocationLink: boolean; includeMedia: boolean;
+  locationLink?: string | null; hostNames?: string | null;
+  weddingDate?: string | null; venue?: string | null;
+  variablesUsed?: string[];
+};
 type Campaign    = { id: string; name: string; status: string; totalCount: number; sentCount: number; failedCount: number; template?: Template | null };
 type Contact     = { id: string; name: string; phone: string; sourceTab?: string | null };
-type Message     = { id: string; status: string; contact: Contact; rsvpToken?: { response?: "YES" | "NO" | null } | null };
+type Message     = { id: string; body: string; status: string; contact: Contact; rsvpToken?: { response?: "YES" | "NO" | null } | null };
 type CDetail     = Campaign & { contacts: Contact[]; messages: Message[] };
 type Stats       = { sent: number; failed: number; pending: number; yes: number; no: number };
-type WaStatus    = { provider: "personal" | "meta"; personal: { state: string; qr: string | null; error?: string | null }; meta: { configured: boolean; phoneNumberId: string; graphVersion: string; sendMode: string; templateName: string } };
-type WaSettings  = { provider: "personal" | "meta"; personalBackendUrl: string };
+type WaStatus    = {
+  provider: "personal" | "meta";
+  personal: { state: string; qr: string | null; error?: string | null; accountPhone?: string | null; displayName?: string | null };
+  meta: { configured: boolean; phoneNumberId: string; graphVersion: string; sendMode: string; templateName: string };
+};
+type WaSettings  = {
+  provider: "personal" | "meta";
+  defaultCountryCode: string;
+  personalSenderPhone: string;
+  personalBackendUrl?: string;
+  meta: {
+    graphVersion: string;
+    phoneNumberId: string;
+    accessToken?: string;
+    appSecret?: string;
+    verifyToken: string;
+    sendMode: "text" | "template";
+    templateName: string;
+    templateLanguage: string;
+  };
+};
 
 const empty: Stats = { sent: 0, failed: 0, pending: 0, yes: 0, no: 0 };
+const requiredSenderPhone = "962795941263";
 
 /* ── Helpers ────────────────────────────────────────────────── */
 const waBadge  = (w: WaStatus) => { if (w.provider === "meta") return w.meta.configured ? "badge b-g" : "badge b-r"; const s = w.personal.state; if (s === "ready") return "badge b-g"; if (s === "disconnected" || s === "disabled") return "badge b-r"; return "badge b-a"; };
 const waLabel  = (w: WaStatus) => { if (w.provider === "meta") return w.meta.configured ? "Meta ready" : "Meta not set"; return w.personal.state; };
 const msgBadge = (s: string)   => s === "SENT" ? "badge b-g" : s === "FAILED" ? "badge b-r" : "badge b-a";
 const cmpBadge = (s: string)   => s === "SENT" ? "b-g" : s === "SENDING" ? "b-a" : s === "FAILED" ? "b-r" : "b-x";
-
+const hasArabic = (text: string) => /[\u0600-\u06FF]/.test(text);
 function preserveQr(cur: WaStatus, next: WaStatus): WaStatus {
   if (next.provider === "personal" && cur.personal.qr && !next.personal.qr && next.personal.state !== "ready")
     return { ...next, personal: { ...next.personal, state: cur.personal.state === "qr" ? "qr" : next.personal.state, qr: cur.personal.qr } };
@@ -38,23 +69,26 @@ export function Dashboard({ initialUser }: { initialUser: SessionUser }) {
   const [campaign, setCampaign]   = useState<CDetail | null>(null);
   const [stats, setStats]         = useState<Stats>(empty);
   const [wa, setWa]               = useState<WaStatus>({ provider: "personal", personal: { state: "loading", qr: null }, meta: { configured: false, phoneNumberId: "", graphVersion: "", sendMode: "text", templateName: "" } });
-  const [waSet, setWaSet]         = useState<WaSettings>({ provider: "personal", personalBackendUrl: "" });
+  const [waSet, setWaSet]         = useState<WaSettings>({
+    provider: "personal",
+    defaultCountryCode: "962",
+    personalSenderPhone: "",
+    personalBackendUrl: "",
+    meta: { graphVersion: "v23.0", phoneNumberId: "", accessToken: "", appSecret: "", verifyToken: "hamza-shouq-webhook", sendMode: "text", templateName: "", templateLanguage: "en_US" },
+  });
   const [notice, setNotice]       = useState("");
   const [isErr, setIsErr]         = useState(false);
   const [loading, setLoading]     = useState<string | null>(null);
   const [active, setActive]       = useState("campaign");
   const [sheetUrl, setSheetUrl]   = useState("https://docs.google.com/spreadsheets/d/1021Z6KyT-dF97FVJAG3c4Nr6thASDpuhPu-hFC_fTA0/edit?usp=sharing");
+  const [waTest, setWaTest]       = useState({ phone: requiredSenderPhone, message: "Hamza & Shouq WhatsApp API test." });
   const permissions = initialUser.permissions;
 
-  const [tmpl, setTmpl] = useState({
-    name: "Wedding Invite EN",
-    bodyEn: "Hi {{name}}, you're invited to Hamza and Shouq's wedding on {{date}} at {{venue}}. Please RSVP here: {{rsvp_link}}",
-    bodyAr: "", mediaUrl: "", mediaType: "",
-  });
   const [cmp, setCmp] = useState({ name: "Wedding Invitations", templateId: "" });
 
   const inited = useRef(false);
   const ntimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const waTestEdited = useRef(false);
 
   function notify(msg: string, err = false) {
     if (ntimer.current) clearTimeout(ntimer.current);
@@ -73,6 +107,10 @@ export function Dashboard({ initialUser }: { initialUser: SessionUser }) {
       setTemplates(nextT); setCampaigns(nextC);
       setWa((c) => preserveQr(c, nextWa));
       setWaSet(nextS);
+      setWaTest((current) => {
+        if (waTestEdited.current) return current;
+        return { ...current, phone: nextS.personalSenderPhone || requiredSenderPhone };
+      });
       if (!inited.current) {
         inited.current = true;
         if (nextC[0]) setSelId(nextC[0].id);
@@ -99,10 +137,7 @@ export function Dashboard({ initialUser }: { initialUser: SessionUser }) {
     return () => obs.forEach((o) => o?.disconnect());
   }, []);
 
-  const preview = useMemo(() => {
-    const row = campaign?.contacts[0] ?? { name: "Ahmed", phone: "+962790000000" };
-    return tmpl.bodyEn.replaceAll("{{name}}", row.name).replaceAll("{{phone}}", row.phone).replaceAll("{{date}}", "Friday, 20 June").replaceAll("{{venue}}", "Amman").replaceAll("{{rsvp_link}}", `${API_URL}/rsvp/example-token`);
-  }, [campaign?.contacts, tmpl.bodyEn]);
+  const readOnlyBody = campaign?.template?.bodyAr?.trim() || campaign?.template?.bodyEn || "";
 
   async function run(key: string, fn: () => Promise<void>) {
     setLoading(key);
@@ -110,15 +145,13 @@ export function Dashboard({ initialUser }: { initialUser: SessionUser }) {
     finally { setLoading(null); }
   }
 
-  const onSaveTmpl    = (e: FormEvent) => { e.preventDefault(); run("tmpl", async () => { const s = await apiPost<Template>("/api/templates", { ...tmpl, bodyAr: tmpl.bodyAr || null, mediaUrl: tmpl.mediaUrl || null, mediaType: tmpl.mediaType || null }); notify("Template saved."); setTemplates((c) => [s, ...c]); setCmp((c) => ({ ...c, templateId: s.id })); }); };
-  const onUpdateTmpl  = (e: FormEvent) => { e.preventDefault(); if (!campaign?.template) return; run("tmpl", async () => { const u = await apiPut<Template>(`/api/templates/${campaign.template!.id}`, { name: tmpl.name, bodyEn: tmpl.bodyEn, bodyAr: tmpl.bodyAr || null, mediaUrl: tmpl.mediaUrl || null, mediaType: tmpl.mediaType || null }); setTemplates((c) => c.map((t) => t.id === u.id ? u : t)); notify("Template updated."); }); };
   const onCreateCmp   = (e: FormEvent) => { e.preventDefault(); run("cmp", async () => { const c = await apiPost<Campaign>("/api/campaigns", cmp); notify("Campaign created."); setCampaigns((p) => [c, ...p]); setSelId(c.id); }); };
   const onContacts    = (e: FormEvent<HTMLFormElement>) => { e.preventDefault(); if (!campaign) return; run("contacts", async () => { await apiPost(`/api/campaigns/${campaign.id}/contacts`, new FormData(e.currentTarget)); notify("Contacts imported."); await loadCampaign(campaign.id); }); };
-  const onMedia       = (e: FormEvent<HTMLFormElement>) => { e.preventDefault(); run("media", async () => { const m = await apiPost<{ url: string; type: string }>("/api/media", new FormData(e.currentTarget)); setTmpl((c) => ({ ...c, mediaUrl: m.url, mediaType: m.type })); notify("Media uploaded."); }); };
   const onPrepare     = () => { if (!campaign) return; run("prepare", async () => { await apiPost(`/api/campaigns/${campaign.id}/prepare`); notify("Messages prepared."); await loadCampaign(campaign.id); }); };
-  const onSend        = () => { if (!campaign) return; const n = campaign.contacts.length; if (!window.confirm(`Send to ${n} contact${n !== 1 ? "s" : ""}? This cannot be undone.`)) return; run("send", async () => { await apiPost(`/api/campaigns/${campaign.id}/send`); notify("Sending started."); await loadCampaign(campaign.id); }); };
+  const onSend        = () => { if (!campaign) return; const n = campaign.contacts.length; if (!window.confirm(`Send to ${n} contact${n !== 1 ? "s" : ""}? This cannot be undone.`)) return; run("send", async () => { const result = await apiPost<{ queued: number; sent: number; failed: number }>(`/api/campaigns/${campaign.id}/send`); notify(result.failed ? `Send finished: ${result.sent} sent, ${result.failed} failed.` : `Sent ${result.sent} message${result.sent !== 1 ? "s" : ""}.`); await loadCampaign(campaign.id); }); };
   const onStartWa     = () => run("wa", async () => { const w = await apiPost<WaStatus>("/api/whatsapp/start"); setWa((c) => preserveQr(c, w)); notify(w.personal.qr ? "WhatsApp QR generated." : "WhatsApp session starting."); });
-  const onSaveWaSet   = (e: FormEvent) => { e.preventDefault(); run("wa-set", async () => { await apiPut("/api/settings", waSet); const w = await apiGet<WaStatus>("/api/whatsapp/status"); setWa((c) => preserveQr(c, w)); notify("Settings saved."); }); };
+  const onSaveWaSet   = (e: FormEvent) => { e.preventDefault(); run("wa-set", async () => { const saved = await apiPut<WaSettings>("/api/settings", waSet); const w = await apiGet<WaStatus>("/api/whatsapp/status"); setWaSet(saved); setWa((c) => preserveQr(c, w)); if (!waTestEdited.current) setWaTest((c) => ({ ...c, phone: saved.personalSenderPhone || requiredSenderPhone })); notify("Settings saved."); }); };
+  const onWaTest       = (e: FormEvent) => { e.preventDefault(); run("wa-test", async () => { const result = await apiPost<{ ok: boolean; id?: string; error?: string }>("/api/whatsapp/test", waTest); if (!result.ok) throw new Error(result.error ?? "WhatsApp test failed"); notify(`Test sent. ${result.id ?? ""}`.trim()); }); };
   const onLogout      = () => run("logout", async () => { await apiPost("/api/auth/logout"); window.location.href = "/login"; });
 
   return (
@@ -142,6 +175,8 @@ export function Dashboard({ initialUser }: { initialUser: SessionUser }) {
           <NavItem href="#template" on={active === "template"} icon={<IconTemplate />}>Template</NavItem>
           <NavItem href="#contacts" on={active === "contacts"} icon={<IconContacts />}>Contacts</NavItem>
           <NavItem href="#whatsapp" on={active === "whatsapp"} icon={<IconWa />}>WhatsApp</NavItem>
+          {permissions.canAccessBudgetTracker && <NavItem href="/budget" on={false} icon={<IconBudget />}>Budget</NavItem>}
+          {(permissions.canViewReminders || permissions.canManageReminders) && <NavItem href="/reminders" on={false} icon={<IconClock />}>Reminders</NavItem>}
           {permissions.canManageAccess && <NavItem href="/access" on={false} icon={<IconAccess />}>Access</NavItem>}
         </nav>
 
@@ -237,52 +272,29 @@ export function Dashboard({ initialUser }: { initialUser: SessionUser }) {
             </div>
           </section>
 
-          {/* ── Template ── */}
-          <section id="template" className="two">
-            {permissions.canEditTemplates ? <form className="card" onSubmit={campaign?.template ? onUpdateTmpl : onSaveTmpl}>
-              <div className="card-head">
-                <span className="card-title">Template Editor</span>
-              </div>
-              <div className="card-body">
-                <Field label="Name" req>
-                  <input className="input" value={tmpl.name} required onChange={(e) => setTmpl((c) => ({ ...c, name: e.target.value }))} />
-                </Field>
-                <Field label="English body" req>
-                  <textarea className="textarea" value={tmpl.bodyEn} required onChange={(e) => setTmpl((c) => ({ ...c, bodyEn: e.target.value }))} />
-                </Field>
-                <Field label="Arabic body (optional)">
-                  <textarea className="textarea" dir="rtl" placeholder="اكتب هنا…" value={tmpl.bodyAr} onChange={(e) => setTmpl((c) => ({ ...c, bodyAr: e.target.value }))} />
-                </Field>
-                <button className="btn btn-p btn-w" type="submit" disabled={loading === "tmpl"}>
-                  {loading === "tmpl" ? "Saving…" : (campaign?.template ? "Update Template" : "Save Template")}
-                </button>
-              </div>
-            </form> : <div className="card">
+          {/* Template */}
+          <section id="template">
+            {permissions.canEditTemplates ? <TemplateBuilder
+              campaign={campaign}
+              templates={templates}
+              loading={loading}
+              onSave={async (data) => run("tmpl", async () => {
+                const s = await apiPost<Template>("/api/templates", data);
+                notify("Template saved.");
+                setTemplates((c) => [s, ...c]);
+                setCmp((c) => ({ ...c, templateId: s.id }));
+              })}
+              onUpdate={async (data) => run("tmpl", async () => {
+                if (!campaign?.template) return;
+                const u = await apiPut<Template>(`/api/templates/${campaign.template.id}`, data);
+                setTemplates((c) => c.map((t) => t.id === u.id ? u : t));
+                notify("Template updated.");
+              })}
+              notify={notify}
+            /> : <div className="card">
               <div className="card-head"><span className="card-title">Template</span><span className="badge b-x">Read only</span></div>
-              <div className="card-body"><div className="preview">{campaign?.template?.bodyEn ?? tmpl.bodyEn}</div></div>
+              <div className="card-body"><div className="preview" dir={hasArabic(readOnlyBody) ? "rtl" : "ltr"}>{readOnlyBody}</div></div>
             </div>}
-
-            <div className="card">
-              <div className="card-head">
-                <span className="card-title">Preview</span>
-                <span className="card-hint">{"{{name}}"} {"{{date}}"} {"{{venue}}"} {"{{rsvp_link}}"}</span>
-              </div>
-              <div className="card-body">
-                <div className="preview">{preview}</div>
-                {permissions.canEditTemplates && <><hr className="divider" />
-                <form style={{ display: "flex", flexDirection: "column", gap: 12 }} onSubmit={onMedia}>
-                  <Field label="Attach media (image · video · PDF)">
-                    <input className="input" name="file" type="file" />
-                  </Field>
-                  <div className="btn-row" style={{ alignItems: "center" }}>
-                    <button className="btn" type="submit" disabled={loading === "media"}>
-                      {loading === "media" ? "Uploading…" : "Upload"}
-                    </button>
-                    {tmpl.mediaUrl && <span className="badge b-g">Media attached</span>}
-                  </div>
-                </form></>}
-              </div>
-            </div>
           </section>
 
           {/* ── Contacts ── */}
@@ -330,9 +342,21 @@ export function Dashboard({ initialUser }: { initialUser: SessionUser }) {
                     <p className="qr-hint">Open WhatsApp → Linked Devices → Link a Device, then scan</p>
                   </div>
                 ) : (
-                  <p style={{ fontSize: 13, color: "var(--label-3)" }}>
-                    {wa.personal.error ?? "QR code appears here when login is needed."}
-                  </p>
+                  <div style={{ display: "grid", gap: 8 }}>
+                    <p style={{ fontSize: 13, color: "var(--label-3)" }}>
+                      {wa.personal.error ?? "QR code appears here when login is needed."}
+                    </p>
+                    <div className="rule-row">
+                      <span className="rule-text">Sending from</span>
+                      <span className={wa.personal.accountPhone ? "badge b-g" : "badge b-x"}>
+                        {wa.personal.accountPhone ? `+${wa.personal.accountPhone}` : "No linked number"}
+                      </span>
+                    </div>
+                    {wa.personal.displayName && <div className="rule-row">
+                      <span className="rule-text">WhatsApp name</span>
+                      <span className="badge b-x">{wa.personal.displayName}</span>
+                    </div>}
+                  </div>
                 )}
               </div>
             </div>
@@ -350,6 +374,29 @@ export function Dashboard({ initialUser }: { initialUser: SessionUser }) {
                   <Field label="Personal backend URL">
                     <input className="input" value={waSet.personalBackendUrl ?? ""} placeholder="https://api.yourhost.com" onChange={(e) => setWaSet((c) => ({ ...c, personalBackendUrl: e.target.value }))} />
                   </Field>
+                  <Field label="Default country code">
+                    <input className="input" value={waSet.defaultCountryCode ?? "962"} placeholder="962" onChange={(e) => setWaSet((c) => ({ ...c, defaultCountryCode: e.target.value.replace(/[^\d]/g, "") || "962" }))} />
+                  </Field>
+                  <Field label="Required sender number">
+                    <input className="input" value={waSet.personalSenderPhone ?? ""} placeholder="0795941263" onChange={(e) => setWaSet((c) => ({ ...c, personalSenderPhone: e.target.value }))} />
+                  </Field>
+                  {waSet.provider === "meta" && <>
+                    <Field label="Meta phone number ID">
+                      <input className="input" value={waSet.meta.phoneNumberId ?? ""} onChange={(e) => setWaSet((c) => ({ ...c, meta: { ...c.meta, phoneNumberId: e.target.value } }))} />
+                    </Field>
+                    <Field label="Meta access token">
+                      <input className="input" value={waSet.meta.accessToken ?? ""} placeholder={waSet.meta.accessToken === "configured" ? "configured" : ""} onChange={(e) => setWaSet((c) => ({ ...c, meta: { ...c.meta, accessToken: e.target.value } }))} />
+                    </Field>
+                    <Field label="Meta send mode">
+                      <select className="select" value={waSet.meta.sendMode ?? "text"} onChange={(e) => setWaSet((c) => ({ ...c, meta: { ...c.meta, sendMode: e.target.value as "text" | "template" } }))}>
+                        <option value="text">Text</option>
+                        <option value="template">Approved template</option>
+                      </select>
+                    </Field>
+                    {waSet.meta.sendMode === "template" && <Field label="Template name">
+                      <input className="input" value={waSet.meta.templateName ?? ""} onChange={(e) => setWaSet((c) => ({ ...c, meta: { ...c.meta, templateName: e.target.value } }))} />
+                    </Field>}
+                  </>}
                   <button className="btn btn-p btn-w" type="submit" disabled={loading === "wa-set"}>
                     {loading === "wa-set" ? "Saving…" : "Save Settings"}
                   </button>
@@ -363,6 +410,22 @@ export function Dashboard({ initialUser }: { initialUser: SessionUser }) {
                 ))}
               </div>
             </div>}
+            {permissions.canManageWhatsApp && <div className="card">
+              <div className="card-head"><span className="card-title">WhatsApp API Test</span></div>
+              <div className="card-body">
+                <form style={{ display: "flex", flexDirection: "column", gap: 12 }} onSubmit={onWaTest}>
+                  <Field label="API test phone">
+                    <input className="input" value={waTest.phone} placeholder={requiredSenderPhone} onChange={(e) => { waTestEdited.current = true; setWaTest((c) => ({ ...c, phone: e.target.value })); }} />
+                  </Field>
+                  <Field label="API test message">
+                    <textarea className="textarea" rows={3} value={waTest.message} onChange={(e) => setWaTest((c) => ({ ...c, message: e.target.value }))} />
+                  </Field>
+                  <button className="btn btn-p btn-w" type="submit" disabled={loading === "wa-test"}>
+                    {loading === "wa-test" ? "Sending test..." : "Send API Test"}
+                  </button>
+                </form>
+              </div>
+            </div>}
             {!permissions.canManageWhatsApp && <div className="card">
               <div className="card-head"><span className="card-title">WhatsApp Settings</span><span className="badge b-x">Read only</span></div>
               <div className="card-body">
@@ -372,6 +435,7 @@ export function Dashboard({ initialUser }: { initialUser: SessionUser }) {
           </section>
 
           {/* ── Messages table with sourceTab filter ── */}
+          <RsvpRequestsPanel campaign={campaign} />
           <MessagesTable campaign={campaign} />
 
         </div>
@@ -405,6 +469,43 @@ function Field({ label, req, children }: { label: string; req?: boolean; childre
 }
 
 /* ── SheetImporter ───────────────────────────────────────────── */
+function RsvpRequestsPanel({ campaign }: { campaign: CDetail | null }) {
+  const sampleBody = campaign?.messages.find((message) => message.body)?.body
+    ?? campaign?.template?.bodyEn
+    ?? campaign?.template?.bodyAr
+    ?? "";
+  const hasPreparedYes = /response=YES/i.test(sampleBody);
+  const hasPreparedNo = /response=NO/i.test(sampleBody);
+  const hasYesVariable = /\{\{\s*(rsvp_yes_link|attending_link)\s*\}\}/i.test(sampleBody);
+  const hasNoVariable = /\{\{\s*(rsvp_no_link|not_attending_link)\s*\}\}/i.test(sampleBody);
+  const statusLabel = (prepared: boolean, variable: boolean) => prepared ? "Live link in message" : variable ? "Template variable" : "Added during prepare";
+
+  return (
+    <section className="card">
+      <div className="card-head">
+        <span className="card-title">RSVP Requests</span>
+        <span className="badge b-g">Readback enabled</span>
+      </div>
+      <div className="card-body" style={{ display: "grid", gap: 10 }}>
+        <div className="rule-row">
+          <span className="rule-text">Attending</span>
+          <span className={hasPreparedYes || hasYesVariable ? "badge b-g" : "badge b-a"}>{statusLabel(hasPreparedYes, hasYesVariable)}</span>
+          <code style={{ marginLeft: "auto", fontSize: 12 }}>{"{{rsvp_yes_link}}"}</code>
+        </div>
+        <div className="rule-row">
+          <span className="rule-text">Not attending</span>
+          <span className={hasPreparedNo || hasNoVariable ? "badge b-g" : "badge b-a"}>{statusLabel(hasPreparedNo, hasNoVariable)}</span>
+          <code style={{ marginLeft: "auto", fontSize: 12 }}>{"{{rsvp_no_link}}"}</code>
+        </div>
+        <div className="rule-row">
+          <span className="rule-text">WhatsApp reply readback</span>
+          <span className="badge b-g">YES / NO / Arabic replies</span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function AccessSummary({ user }: { user: SessionUser }) {
   const roles = [
     { name: "Owner", access: "Full system access", users: "Zaid" },
@@ -493,7 +594,14 @@ function SheetImporter({ campaignId, defaultUrl, onUrlChange, onImported, notify
   const [statuses, setStatuses] = useState<Record<string, TabStatus>>({});
   const [importing, setImporting] = useState(false);
 
-  function handleUrl(v: string) { setUrl(v); onUrlChange(v); }
+  function handleUrl(v: string) {
+    setUrl(v);
+    onUrlChange(v);
+    setTabs(null);
+    setSelected(new Set());
+    setStatuses({});
+    setExpanded(null);
+  }
 
   async function detect() {
     if (!campaignId) { notify("Select a campaign first.", true); return; }
@@ -503,15 +611,16 @@ function SheetImporter({ campaignId, defaultUrl, onUrlChange, onImported, notify
         `/api/campaigns/${campaignId}/contacts/google-sheet/detect`, { url },
       );
       setTabs(r.tabs);
-      setSelected(new Set(r.tabs.map((t) => t.name)));
+      setSelected(new Set());
+      setExpanded(r.tabs[0]?.name ?? null);
     } catch (e) { notify(e instanceof Error ? e.message : "Detection failed.", true); }
     finally { setDetecting(false); }
   }
 
-  async function doImport(selectedOnly: boolean) {
+  async function doImport() {
     if (!campaignId || !tabs) return;
-    const toImport = selectedOnly ? tabs.filter((t) => selected.has(t.name)) : tabs;
-    if (!toImport.length) return;
+    const toImport = tabs.filter((t) => selected.has(t.name));
+    if (!toImport.length) { notify("Check the exact sheet tabs to import first.", true); return; }
     setImporting(true);
     const next: Record<string, TabStatus> = {};
     toImport.forEach((t) => { next[t.name] = { status: "importing" }; });
@@ -552,9 +661,7 @@ function SheetImporter({ campaignId, defaultUrl, onUrlChange, onImported, notify
           <div className="sheet-tabs-wrap">
             <div className="sheet-tabs-head">
               <span>{tabs.length} tab{tabs.length !== 1 ? "s" : ""} &nbsp;·&nbsp; {totalAll.toLocaleString()} contacts total</span>
-              <button className="btn btn-sm" onClick={() => setSelected(selected.size === tabs.length ? new Set() : new Set(tabs.map((t) => t.name)))}>
-                {selected.size === tabs.length ? "Deselect all" : "Select all"}
-              </button>
+              <span className="badge b-x">{selected.size} checked</span>
             </div>
 
             {tabs.map((tab) => {
@@ -601,11 +708,8 @@ function SheetImporter({ campaignId, defaultUrl, onUrlChange, onImported, notify
             })}
 
             <div className="sheet-actions">
-              <button className="btn" onClick={() => doImport(false)} disabled={importing}>
-                Import All ({totalAll.toLocaleString()})
-              </button>
-              <button className="btn btn-p" onClick={() => doImport(true)} disabled={!selected.size || importing}>
-                {importing ? "Importing…" : `Import Selected (${totalSelected.toLocaleString()})`}
+              <button className="btn btn-p" onClick={() => doImport()} disabled={!selected.size || importing}>
+                {importing ? "Importing…" : `Import Checked Tabs (${totalSelected.toLocaleString()})`}
               </button>
             </div>
           </div>
@@ -659,7 +763,7 @@ function MessagesTable({ campaign }: { campaign: CDetail | null }) {
         <table className="tbl">
           <thead>
             <tr>
-              <th>Name</th><th>Phone</th>{sourceTabs.length > 0 && <th>List</th>}<th>Status</th><th>RSVP</th>
+              <th>Name</th><th>Phone</th>{sourceTabs.length > 0 && <th>List</th>}<th>Message</th><th>Status</th><th>RSVP</th>
             </tr>
           </thead>
           <tbody>
@@ -670,6 +774,7 @@ function MessagesTable({ campaign }: { campaign: CDetail | null }) {
                 {sourceTabs.length > 0 && (
                   <td>{m.contact.sourceTab ? <span className="badge b-x">{m.contact.sourceTab}</span> : <span style={{ color: "var(--label-3)" }}>—</span>}</td>
                 )}
+                <td className="message-cell" dir={hasArabic(m.body) ? "rtl" : "ltr"}>{m.body}</td>
                 <td><span className={msgBadge(m.status)}>{m.status}</span></td>
                 <td>
                   {m.rsvpToken?.response
@@ -679,7 +784,7 @@ function MessagesTable({ campaign }: { campaign: CDetail | null }) {
               </tr>
             )) : (
               <tr>
-                <td colSpan={sourceTabs.length > 0 ? 5 : 4} className="tbl-empty">
+                <td colSpan={sourceTabs.length > 0 ? 6 : 5} className="tbl-empty">
                   {campaign ? (activeTab !== "all" ? `No messages in list "${activeTab}".` : "No messages yet — use Prepare above.") : "Select a campaign to view messages."}
                 </td>
               </tr>
@@ -696,4 +801,6 @@ const IconGrid     = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentC
 const IconTemplate = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="1" y="1" width="14" height="10" rx="1.5"/><path d="M4 14h8M8 11v3" strokeLinecap="round"/></svg>;
 const IconContacts = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="6" cy="5" r="3"/><path d="M1 14c0-3 2-5 5-5s5 2 5 5" strokeLinecap="round"/><path d="M12 6l2 2M14 6l-2 2" strokeLinecap="round"/></svg>;
 const IconWa       = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="6.5"/><path d="M5.5 9.5c.5 1 1.5 2 2.5 2 2.5 0 3.5-2 3.5-3.5S10 4 8 4 5 5.5 5 7.5c0 .7.2 1.3.5 1.8L4.5 12l1.5-.5" strokeLinecap="round" strokeLinejoin="round"/></svg>;
+const IconBudget   = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="2" y="3" width="12" height="10" rx="2"/><path d="M2 6h12M5 10h2" strokeLinecap="round"/></svg>;
+const IconClock    = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="6.5"/><path d="M8 4.5V8l2.5 1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>;
 const IconAccess   = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M8 1.5l5 2v3.8c0 3.2-2.1 5.9-5 7.2-2.9-1.3-5-4-5-7.2V3.5l5-2z" strokeLinejoin="round"/><path d="M6 8l1.4 1.4L10.5 6" strokeLinecap="round" strokeLinejoin="round"/></svg>;

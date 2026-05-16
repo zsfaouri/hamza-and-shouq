@@ -29,5 +29,5 @@ export default async function AccessPage() {
     );
   }
 
-  return <AccessClient currentUser={user} initialUsers={data.accessUsers.map(publicUser)} lists={[...SHEET_LISTS]} />;
+  return <AccessClient currentUser={user} initialUsers={data.accessUsers.map((record) => publicUser(record))} lists={[...SHEET_LISTS]} />;
 }

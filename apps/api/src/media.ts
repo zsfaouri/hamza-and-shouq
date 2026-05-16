@@ -33,6 +33,6 @@ export async function saveMedia(file: Express.Multer.File) {
   const filename = `${randomUUID()}${extension}`;
   const fullPath = path.join(uploadDir, filename);
   await fs.writeFile(fullPath, file.buffer);
-  const publicBase = process.env.API_PUBLIC_URL ?? `http://localhost:${process.env.API_PORT ?? 4100}`;
+  const publicBase = process.env.MEDIA_PUBLIC_URL ?? `http://localhost:${process.env.API_PORT ?? 4100}`;
   return { url: `${publicBase}/uploads/${filename}`, type: file.mimetype };
 }

@@ -36,7 +36,8 @@ function normalizeState(input: Partial<AppState> | null | undefined): AppState {
     template: { ...base.template, ...(input?.template || {}) },
     whatsapp: { ...base.whatsapp, ...(input?.whatsapp || {}) },
   };
-  merged.whatsapp.provider = merged.whatsapp.provider === "personal" ? "personal" : "meta";
+  const metaConfigured = Boolean(merged.whatsapp.phoneNumberId && merged.whatsapp.accessToken && merged.whatsapp.accessToken !== "SET");
+  merged.whatsapp.provider = merged.whatsapp.provider === "personal" || !metaConfigured ? "personal" : "meta";
   merged.whatsapp.personalBridgeUrl ||= "";
   merged.whatsapp.personalBridgeToken ||= "";
   merged.campaign.contacts ||= [];

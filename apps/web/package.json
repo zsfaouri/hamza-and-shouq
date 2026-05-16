@@ -11,7 +11,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "tsx tests/sheets.test.ts && tsx tests/domain.test.ts && tsx tests/whatsapp.test.ts"
+    "test": "tsx tests/sheets.test.ts && tsx tests/domain.test.ts && tsx tests/whatsapp.test.ts && tsx tests/store.test.ts"
   },
   "dependencies": {
     "next": "15.5.18",

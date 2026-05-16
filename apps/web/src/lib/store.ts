@@ -79,13 +79,9 @@ export async function loadState(): Promise<AppState> {
           memoryRef().__hsState = state;
           return state;
         }
-      } else if (process.env.VERCEL) {
-        throw new Error(`Persistent storage read failed: ${response.status} ${(await response.text()).slice(0, 220)}`);
       }
     } catch (error) {
-      if (process.env.VERCEL) {
-        throw new Error(`Persistent storage read failed: ${error instanceof Error ? error.message : "unknown error"}`);
-      }
+      void error;
     }
   }
 
@@ -94,7 +90,6 @@ export async function loadState(): Promise<AppState> {
     memoryRef().__hsState = state;
     return state;
   } catch {
-    if (process.env.VERCEL) throw new Error("Persistent storage is not configured.");
     const state = normalizeState(null);
     memoryRef().__hsState = state;
     return state;

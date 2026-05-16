@@ -289,7 +289,13 @@ export default function Dashboard() {
     return `${rendered.trimEnd()}\n\nAttending: ${values.attending_link}\nNot attending: ${values.not_attending_link}`;
   }, [state?.campaign.contacts, state?.campaign.messages, templateBody]);
 
-  if (!state) return <main className="login-page"><p className="notice">Loading...</p></main>;
+  if (!state) {
+    return (
+      <main className="login-page">
+        <p className={`notice ${error ? "error" : ""}`}>{error || "Loading..."}</p>
+      </main>
+    );
+  }
   const activeTemplateId = state.activeTemplateId || state.template.id;
 
   return (

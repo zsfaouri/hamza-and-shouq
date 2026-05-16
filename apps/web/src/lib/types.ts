@@ -72,6 +72,8 @@ export type AppState = {
   version: 1;
   campaign: Campaign;
   template: Template;
+  templates: Template[];
+  activeTemplateId: string;
   whatsapp: WhatsAppSettings;
 };
 

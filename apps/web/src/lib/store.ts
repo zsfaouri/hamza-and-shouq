@@ -28,11 +28,27 @@ function supabaseHeaders(key: string, contentType = false) {
 
 function normalizeState(input: Partial<AppState> | null | undefined): AppState {
   const base = defaultState();
+  const legacyTemplate = { ...base.template, ...(input?.template || {}) };
+  const templates = (input?.templates?.length ? input.templates : [legacyTemplate]).map((template) => ({
+    ...base.template,
+    ...template,
+    mediaName: template.mediaName || "",
+    mediaMimeType: template.mediaMimeType || "",
+    mediaData: template.mediaData || "",
+  }));
+  const activeTemplateId = templates.some((template) => template.id === input?.activeTemplateId)
+    ? String(input?.activeTemplateId)
+    : templates.some((template) => template.id === legacyTemplate.id)
+      ? legacyTemplate.id
+      : templates[0].id;
+  const active = templates.find((template) => template.id === activeTemplateId) || templates[0];
   const merged = {
     ...base,
     ...(input || {}),
     campaign: { ...base.campaign, ...(input?.campaign || {}) },
-    template: { ...base.template, ...(input?.template || {}) },
+    template: active,
+    templates,
+    activeTemplateId: active.id,
     whatsapp: { ...base.whatsapp, ...(input?.whatsapp || {}) },
   };
   const metaConfigured = Boolean(merged.whatsapp.phoneNumberId && merged.whatsapp.accessToken && merged.whatsapp.accessToken !== "SET");
@@ -121,6 +137,10 @@ export function publicState(state: AppState) {
       ...state.template,
       mediaData: "",
     },
+    templates: state.templates.map((template) => ({
+      ...template,
+      mediaData: "",
+    })),
     whatsapp: {
       ...state.whatsapp,
       accessToken: state.whatsapp.accessToken ? "SET" : "",

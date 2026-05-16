@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { renderBody, setRsvp } from "../src/lib/domain";
+import { activeTemplate, createTemplate, defaultState, renderBody, setActiveTemplate, setRsvp, upsertTemplate } from "../src/lib/domain";
 import type { AppState, Contact, Message, Template } from "../src/lib/types";
 
 const contact: Contact = {
@@ -43,6 +43,8 @@ const state = {
   version: 1,
   campaign: { id: "campaign-main", name: "Test", sheetUrl: "", selectedTabs: [], contacts: [contact], messages: [message], updatedAt: "" },
   template,
+  templates: [template],
+  activeTemplateId: template.id,
   whatsapp: {
     provider: "meta",
     graphVersion: "v23.0",
@@ -58,5 +60,17 @@ const state = {
 assert.equal(setRsvp(state, "token-1", "YES"), true);
 assert.equal(state.campaign.messages[0].rsvp, "YES");
 assert.equal(setRsvp(state, "bad", "NO"), false);
+
+const multi = defaultState();
+assert.equal(multi.templates.length, 1);
+const second = createTemplate("Reminder", "Reminder for {{name}}");
+upsertTemplate(multi, second, true);
+assert.equal(multi.templates.length, 2);
+assert.equal(multi.activeTemplateId, second.id);
+assert.equal(activeTemplate(multi).name, "Reminder");
+assert.equal(multi.template.name, "Reminder");
+setActiveTemplate(multi, "template-main");
+assert.equal(activeTemplate(multi).name, "Wedding invitation");
+assert.equal(multi.template.id, "template-main");
 
 console.log("domain tests passed");

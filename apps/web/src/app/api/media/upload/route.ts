@@ -1,5 +1,5 @@
 import { requireAuth } from "@/lib/auth";
-import { nowIso, rebuildMessages, siteUrl } from "@/lib/domain";
+import { activeTemplate, nowIso, rebuildMessages, siteUrl, upsertTemplate } from "@/lib/domain";
 import { loadState, saveState } from "@/lib/store";
 
 export const runtime = "nodejs";
@@ -26,24 +26,26 @@ export async function POST(request: Request) {
   }
 
   const state = await loadState();
+  const current = activeTemplate(state);
   const updatedAt = nowIso();
-  const mediaUrl = `${siteUrl()}/api/media/template?v=${encodeURIComponent(updatedAt)}`;
-  state.template = {
-    ...state.template,
+  const mediaUrl = `${siteUrl()}/api/media/template?id=${encodeURIComponent(current.id)}&v=${encodeURIComponent(updatedAt)}`;
+  const template = upsertTemplate(state, {
+    ...current,
     mediaUrl,
     mediaName: file.name || "template-image",
     mediaMimeType: file.type,
     mediaData: buffer.toString("base64"),
     updatedAt,
-  };
-  rebuildMessages(state.campaign, state.template);
+  }, true);
+  rebuildMessages(state.campaign, template);
   await saveState(state);
 
   return Response.json({
     ok: true,
     mediaUrl,
-    mediaName: state.template.mediaName,
-    mediaMimeType: state.template.mediaMimeType,
+    templateId: template.id,
+    mediaName: template.mediaName,
+    mediaMimeType: template.mediaMimeType,
     bytes: buffer.length,
   });
 }

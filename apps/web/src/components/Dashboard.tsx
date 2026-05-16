@@ -29,6 +29,7 @@ export default function Dashboard() {
   const [sheetUrl, setSheetUrl] = useState("");
   const [tabs, setTabs] = useState<SheetTab[]>([]);
   const [selectedTabs, setSelectedTabs] = useState<Set<string>>(new Set());
+  const [templateName, setTemplateName] = useState("");
   const [templateBody, setTemplateBody] = useState("");
   const [mediaUrl, setMediaUrl] = useState("");
   const [notice, setNotice] = useState("");
@@ -42,10 +43,12 @@ export default function Dashboard() {
 
   async function refresh() {
     const data = await api<PublicState>("/api/state");
+    const active = data.templates.find((template) => template.id === data.activeTemplateId) || data.template;
     setState(data);
     setSheetUrl(data.campaign.sheetUrl);
-    setTemplateBody(data.template.body);
-    setMediaUrl(data.template.mediaUrl);
+    setTemplateName(active.name);
+    setTemplateBody(active.body);
+    setMediaUrl(active.mediaUrl);
   }
 
   useEffect(() => {
@@ -98,12 +101,45 @@ export default function Dashboard() {
     try {
       await api("/api/template", {
         method: "POST",
-        body: JSON.stringify({ body: templateBody, mediaUrl }),
+        body: JSON.stringify({ templateId: state?.activeTemplateId, name: templateName, body: templateBody, mediaUrl }),
       });
       await refresh();
       show("Template saved and message previews rebuilt.");
     } catch (err) {
       show(err instanceof Error ? err.message : "Template save failed.", true);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function createTemplate() {
+    setBusy("template-create");
+    try {
+      const name = `Template ${((state?.templates.length || 0) + 1).toString().padStart(2, "0")}`;
+      await api("/api/template", {
+        method: "POST",
+        body: JSON.stringify({ createNew: true, name, body: templateBody || "Hi {{name}}, you are invited.\n\nAttending: {{attending_link}}\nNot attending: {{not_attending_link}}", mediaUrl: "" }),
+      });
+      await refresh();
+      show("Template created.");
+    } catch (err) {
+      show(err instanceof Error ? err.message : "Template create failed.", true);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function selectTemplate(templateId: string) {
+    setBusy("template-select");
+    try {
+      await api("/api/template", {
+        method: "POST",
+        body: JSON.stringify({ templateId, activateOnly: true }),
+      });
+      await refresh();
+      show("Template selected and message previews rebuilt.");
+    } catch (err) {
+      show(err instanceof Error ? err.message : "Template select failed.", true);
     } finally {
       setBusy("");
     }
@@ -254,6 +290,7 @@ export default function Dashboard() {
   }, [state?.campaign.contacts, state?.campaign.messages, templateBody]);
 
   if (!state) return <main className="login-page"><p className="notice">Loading...</p></main>;
+  const activeTemplateId = state.activeTemplateId || state.template.id;
 
   return (
     <main className="app-shell">
@@ -304,6 +341,34 @@ export default function Dashboard() {
 
           <div className="panel">
             <h2>Message Template</h2>
+            <div className="template-switcher">
+              <div className="field">
+                <label>Saved templates</label>
+                <select className="input" value={activeTemplateId} disabled={busy === "template-select"} onChange={(event) => { void selectTemplate(event.target.value); }}>
+                  {state.templates.map((template) => (
+                    <option key={template.id} value={template.id}>{template.name}</option>
+                  ))}
+                </select>
+              </div>
+              <button className="btn" disabled={busy === "template-create"} onClick={createTemplate}>{busy === "template-create" ? "Creating..." : "New Template"}</button>
+            </div>
+            <div className="template-list">
+              {state.templates.map((template) => (
+                <button
+                  key={template.id}
+                  className={`template-chip ${template.id === activeTemplateId ? "active" : ""}`}
+                  disabled={busy === "template-select"}
+                  onClick={() => { void selectTemplate(template.id); }}
+                >
+                  <span>{template.name}</span>
+                  {template.mediaUrl ? <small>image</small> : <small>text</small>}
+                </button>
+              ))}
+            </div>
+            <div className="field">
+              <label>Template name</label>
+              <input className="input" value={templateName} onChange={(event) => setTemplateName(event.target.value)} placeholder="Wedding invitation" />
+            </div>
             <div className="field">
               <label>Body</label>
               <textarea className="textarea" value={templateBody} onChange={(event) => setTemplateBody(event.target.value)} />

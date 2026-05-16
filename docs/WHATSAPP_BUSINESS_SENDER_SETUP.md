@@ -100,4 +100,6 @@ Template variables:
 {{rsvp_link}}
 ```
 
+The dashboard supports multiple saved templates. Selecting a template rebuilds the message previews for the imported contacts. Each template can have its own uploaded image and preview.
+
 Clicking a link updates the dashboard. Incoming WhatsApp replies like `yes`, `attending`, `no`, `not attending`, `نعم`, or `لا` are parsed by the webhook and recorded against the matching phone number.

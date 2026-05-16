@@ -22,7 +22,8 @@ Kept as core product:
 - Personal WhatsApp provider settings
 - Personal bridge/local QR status and start routes
 - Persistent `apps/bridge` service for Personal WhatsApp
-- Template image upload and preview
+- Multiple saved message templates
+- Template image upload and preview per template
 - Visible storage diagnostics so template saves cannot silently fall back to Vercel memory
 - guarded selected-row sending
 - RSVP links

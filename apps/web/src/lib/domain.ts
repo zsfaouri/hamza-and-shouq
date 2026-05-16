@@ -25,6 +25,16 @@ export function defaultTemplate(): Template {
   };
 }
 
+export function createTemplate(name = "Wedding invitation", body = defaultTemplate().body): Template {
+  return {
+    ...defaultTemplate(),
+    id: crypto.randomUUID(),
+    name: name.trim() || "Wedding invitation",
+    body: body.trim() || defaultTemplate().body,
+    updatedAt: nowIso(),
+  };
+}
+
 export function defaultCampaign(): Campaign {
   return {
     id: "campaign-main",
@@ -42,10 +52,13 @@ export function defaultState(): AppState {
   const requestedProvider = process.env.WHATSAPP_PROVIDER === "meta" || process.env.WHATSAPP_PROVIDER === "personal"
     ? process.env.WHATSAPP_PROVIDER
     : "personal";
+  const template = defaultTemplate();
   return {
     version: 1,
     campaign: defaultCampaign(),
-    template: defaultTemplate(),
+    template,
+    templates: [template],
+    activeTemplateId: template.id,
     whatsapp: {
       provider: requestedProvider === "meta" && metaConfigured ? "meta" : "personal",
       graphVersion: process.env.META_GRAPH_VERSION || "v23.0",
@@ -57,6 +70,41 @@ export function defaultState(): AppState {
       personalBridgeToken: process.env.PERSONAL_WHATSAPP_TOKEN || "",
     },
   };
+}
+
+export function activeTemplate(state: AppState): Template {
+  return state.templates.find((item) => item.id === state.activeTemplateId) || state.template || state.templates[0] || defaultTemplate();
+}
+
+export function syncActiveTemplate(state: AppState) {
+  const active = activeTemplate(state);
+  state.activeTemplateId = active.id;
+  state.template = active;
+  if (!state.templates.some((item) => item.id === active.id)) state.templates = [active, ...state.templates];
+  return active;
+}
+
+export function upsertTemplate(state: AppState, template: Template, activate = true) {
+  const next = {
+    ...defaultTemplate(),
+    ...template,
+    name: template.name.trim() || "Wedding invitation",
+    body: template.body.trim() || defaultTemplate().body,
+    updatedAt: nowIso(),
+  };
+  const index = state.templates.findIndex((item) => item.id === next.id);
+  if (index >= 0) state.templates[index] = next;
+  else state.templates.push(next);
+  if (activate) state.activeTemplateId = next.id;
+  syncActiveTemplate(state);
+  return next;
+}
+
+export function setActiveTemplate(state: AppState, templateId: string) {
+  if (!state.templates.some((item) => item.id === templateId)) return false;
+  state.activeTemplateId = templateId;
+  syncActiveTemplate(state);
+  return true;
 }
 
 function value(contact: Contact, key: string) {

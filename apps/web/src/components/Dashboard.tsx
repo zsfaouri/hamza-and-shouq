@@ -303,15 +303,31 @@ export default function Dashboard() {
       <header className="topbar">
         <div className="brand">
           <h1>Hamza and Shouq</h1>
-          <span>Google Sheets to WhatsApp RSVP system</span>
+          <span>RSVP operations desk</span>
         </div>
-        <button className="btn" onClick={() => fetch("/api/auth/logout", { method: "POST" }).then(() => { window.location.href = "/login"; })}>Logout</button>
+        <div className="topbar-actions">
+          <span className="live-dot">Production</span>
+          <button className="btn" onClick={() => fetch("/api/auth/logout", { method: "POST" }).then(() => { window.location.href = "/login"; })}>Logout</button>
+        </div>
       </header>
 
       <div className="content">
-        <section className="stack">
-          <div className="panel">
-            <h2>Google Sheets</h2>
+        <section className="status-rail">
+          <div className="stat primary-stat"><span>Contacts</span><strong>{stats.contacts}</strong></div>
+          <div className="stat"><span>Ready</span><strong>{stats.ready}</strong></div>
+          <div className="stat"><span>Sent</span><strong>{stats.sent}</strong></div>
+          <div className="stat"><span>RSVP yes/no</span><strong>{stats.yes}/{stats.no}</strong></div>
+          {(notice || error) ? <p className={`notice ${error ? "error" : "ok"}`}>{error || notice}</p> : null}
+        </section>
+
+        <section className="workspace">
+          <div className="panel panel-sheets">
+            <div className="section-heading">
+              <div>
+                <h2>Google Sheets</h2>
+                <p>Detect tabs, choose the real guest lists, then import only checked rows.</p>
+              </div>
+            </div>
             <div className="field">
               <label>Sheet URL</label>
               <input className="input" value={sheetUrl} onChange={(event) => setSheetUrl(event.target.value)} placeholder="https://docs.google.com/spreadsheets/d/..." />
@@ -345,8 +361,13 @@ export default function Dashboard() {
             ) : null}
           </div>
 
-          <div className="panel">
-            <h2>Message Template</h2>
+          <div className="panel panel-template">
+            <div className="section-heading">
+              <div>
+                <h2>Message Template</h2>
+                <p>Template, media, preview, and storage check in one editing surface.</p>
+              </div>
+            </div>
             <div className="template-switcher">
               <div className="field">
                 <label>Saved templates</label>
@@ -409,8 +430,13 @@ export default function Dashboard() {
             ) : null}
           </div>
 
-          <form className="panel" onSubmit={submitSettings}>
-            <h2>WhatsApp</h2>
+          <form className="panel panel-whatsapp" onSubmit={submitSettings}>
+            <div className="section-heading">
+              <div>
+                <h2>WhatsApp</h2>
+                <p>Provider settings, bridge checks, and QR startup controls.</p>
+              </div>
+            </div>
             <div className="field">
               <label>Provider</label>
               <select className="input" name="provider" defaultValue={state.whatsapp.provider}>
@@ -439,20 +465,13 @@ export default function Dashboard() {
               </div>
             ) : null}
           </form>
-        </section>
-
-        <section className="stack">
-          {(notice || error) ? <p className={`notice ${error ? "error" : "ok"}`}>{error || notice}</p> : null}
-
-          <div className="stats">
-            <div className="stat"><span>Contacts</span><strong>{stats.contacts}</strong></div>
-            <div className="stat"><span>Ready</span><strong>{stats.ready}</strong></div>
-            <div className="stat"><span>Sent</span><strong>{stats.sent}</strong></div>
-            <div className="stat"><span>RSVP yes/no</span><strong>{stats.yes}/{stats.no}</strong></div>
-          </div>
-
-          <div className="panel">
-            <h2>Send Control</h2>
+          <div className="panel panel-send">
+            <div className="section-heading compact">
+              <div>
+                <h2>Send Control</h2>
+                <p>Checked rows only. Confirmation stays explicit.</p>
+              </div>
+            </div>
             <p className="notice">Sending requires checked rows and exact confirmation text: SEND SELECTED</p>
             <div className="row">
               <input className="input" style={{ maxWidth: 260 }} value={sendConfirm} onChange={(event) => setSendConfirm(event.target.value)} placeholder="SEND SELECTED" />
@@ -462,8 +481,13 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="panel">
-            <h2>Messages</h2>
+          <div className="panel panel-messages">
+            <div className="section-heading compact">
+              <div>
+                <h2>Messages</h2>
+                <p>{state.campaign.messages.length} prepared rows in this campaign.</p>
+              </div>
+            </div>
             <div className="table-wrap">
               <table>
                 <thead>

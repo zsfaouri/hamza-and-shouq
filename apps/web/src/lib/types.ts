@@ -13,6 +13,9 @@ export type Template = {
   name: string;
   body: string;
   mediaUrl: string;
+  mediaName: string;
+  mediaMimeType: string;
+  mediaData: string;
   includeRsvpLinks: boolean;
   updatedAt: string;
 };

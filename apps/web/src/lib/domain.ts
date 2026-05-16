@@ -17,6 +17,9 @@ export function defaultTemplate(): Template {
     name: "Wedding invitation",
     body: "Hi {{name}}, you are invited to Hamza and Shouq's wedding.\n\nAttending: {{attending_link}}\nNot attending: {{not_attending_link}}",
     mediaUrl: "",
+    mediaName: "",
+    mediaMimeType: "",
+    mediaData: "",
     includeRsvpLinks: true,
     updatedAt: nowIso(),
   };

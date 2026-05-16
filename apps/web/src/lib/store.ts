@@ -21,8 +21,7 @@ function supabaseConfig() {
 }
 
 function supabaseHeaders(key: string, contentType = false) {
-  const headers: Record<string, string> = { apikey: key };
-  if (key.startsWith("eyJ")) headers.Authorization = `Bearer ${key}`;
+  const headers: Record<string, string> = { apikey: key, Authorization: `Bearer ${key}` };
   if (contentType) headers["Content-Type"] = "application/json";
   return headers;
 }
@@ -64,9 +63,13 @@ export async function loadState(): Promise<AppState> {
           memoryRef().__hsState = state;
           return state;
         }
+      } else if (process.env.VERCEL) {
+        throw new Error(`Persistent storage read failed: ${response.status} ${(await response.text()).slice(0, 220)}`);
       }
-    } catch {
-      return normalizeState(null);
+    } catch (error) {
+      if (process.env.VERCEL) {
+        throw new Error(`Persistent storage read failed: ${error instanceof Error ? error.message : "unknown error"}`);
+      }
     }
   }
 
@@ -75,6 +78,7 @@ export async function loadState(): Promise<AppState> {
     memoryRef().__hsState = state;
     return state;
   } catch {
+    if (process.env.VERCEL) throw new Error("Persistent storage is not configured.");
     const state = normalizeState(null);
     memoryRef().__hsState = state;
     return state;
@@ -82,31 +86,41 @@ export async function loadState(): Promise<AppState> {
 }
 
 export async function saveState(state: AppState) {
-  memoryRef().__hsState = state;
   const config = supabaseConfig();
   if (config) {
-    const response = await fetch(`${config.url}/rest/v1/hs_app_state`, {
+    const response = await fetch(`${config.url}/rest/v1/hs_app_state?on_conflict=id`, {
       method: "POST",
       headers: {
         ...supabaseHeaders(config.key, true),
-        Prefer: "resolution=merge-duplicates",
+        Prefer: "resolution=merge-duplicates,return=minimal",
       },
-      body: JSON.stringify({ id: "main", data: state }),
+      body: JSON.stringify({ id: "main", data: state, updated_at: new Date().toISOString() }),
     });
-    if (response.ok) return;
+    if (response.ok) {
+      memoryRef().__hsState = state;
+      return;
+    }
+    const text = await response.text().catch(() => "");
+    if (process.env.VERCEL) throw new Error(`Persistent storage write failed: ${response.status} ${text.slice(0, 220)}`);
   }
 
   try {
     await mkdir(path.dirname(localFile), { recursive: true });
     await writeFile(localFile, JSON.stringify(state, null, 2));
+    memoryRef().__hsState = state;
   } catch {
-    // Vercel file storage is not durable; memory still keeps the current runtime usable.
+    if (process.env.VERCEL) throw new Error("Persistent storage is not configured.");
+    memoryRef().__hsState = state;
   }
 }
 
 export function publicState(state: AppState) {
   return {
     ...state,
+    template: {
+      ...state.template,
+      mediaData: "",
+    },
     whatsapp: {
       ...state.whatsapp,
       accessToken: state.whatsapp.accessToken ? "SET" : "",
@@ -130,8 +144,8 @@ export async function storageDiagnostics() {
   try {
     const probe = await fetch(`${config.url}/rest/v1/hs_app_state`, {
       method: "POST",
-      headers: { ...supabaseHeaders(config.key, true), Prefer: "resolution=merge-duplicates" },
-      body: JSON.stringify({ id: "__probe", data: { checkedAt: new Date().toISOString() } }),
+      headers: { ...supabaseHeaders(config.key, true), Prefer: "resolution=merge-duplicates,return=minimal" },
+      body: JSON.stringify({ id: "__probe", data: { checkedAt: new Date().toISOString() }, updated_at: new Date().toISOString() }),
     });
     out.writeOk = probe.ok;
     if (!probe.ok) out.error = `write ${probe.status}: ${(await probe.text()).slice(0, 160)}`;

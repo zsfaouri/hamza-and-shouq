@@ -20,13 +20,15 @@ Use `Meta WhatsApp Cloud API` for official WhatsApp Business API sending.
 Vercel cannot keep a personal QR session alive by itself. Use one of these:
 
 - Local development: leave `PERSONAL_WHATSAPP_API_URL` empty and click `Start Personal QR`.
-- Production: set `PERSONAL_WHATSAPP_API_URL` to a persistent bridge server that exposes `/api/whatsapp/status`, `/api/whatsapp/start`, and `/api/whatsapp/test`.
+- Production: set `PERSONAL_WHATSAPP_API_URL` to a persistent bridge server that exposes `/api/whatsapp/status`, `/api/whatsapp/start`, and `/api/whatsapp/send`.
 
 The bridge implementation is included in:
 
 ```text
 apps/bridge
 ```
+
+The included `render.yaml` runs the bridge as Docker so Chromium is installed explicitly and the WhatsApp session is stored under `/var/data`.
 
 Optional bridge auth:
 
@@ -67,6 +69,15 @@ WHATSAPP_SENDER_PHONE=962795941263
 NEXT_PUBLIC_SITE_URL=https://web-zsfaouris-projects.vercel.app
 ```
 
+Set persistent storage before trusting template saves:
+
+```text
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+```
+
+If using Supabase publishable keys instead, install `docs/SUPABASE_SCHEMA.sql` so the app-state table allows the required read/write operations.
+
 ## Send Safety
 
 The app does not have an import-all action.
@@ -89,4 +100,4 @@ Template variables:
 {{rsvp_link}}
 ```
 
-Clicking a link updates the dashboard. Incoming WhatsApp replies like `yes`, `attending`, `no`, or `not attending` are parsed by the webhook and recorded against the matching phone number.
+Clicking a link updates the dashboard. Incoming WhatsApp replies like `yes`, `attending`, `no`, `not attending`, `نعم`, or `لا` are parsed by the webhook and recorded against the matching phone number.

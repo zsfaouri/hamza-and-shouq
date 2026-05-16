@@ -1,6 +1,6 @@
 import "dotenv/config";
 import cors from "cors";
-import express, { type Request, type Response, type NextFunction } from "express";
+import express, { type NextFunction, type Request, type Response } from "express";
 import path from "node:path";
 import qrcode from "qrcode";
 import { z } from "zod";
@@ -16,10 +16,23 @@ type BridgeState = {
   accountPhone: string;
   displayName: string;
   starting: boolean;
+  startedAt: string;
+  lastReadyAt: string;
+  lastMessageAt: string;
 };
 
 type SendResult = {
   id?: { _serialized?: string } | string;
+};
+
+type InboundMessage = {
+  from?: string;
+  fromMe?: boolean;
+  isStatus?: boolean;
+  body?: string;
+  selectedButtonId?: string;
+  buttonText?: string;
+  type?: string;
 };
 
 const app = express();
@@ -28,30 +41,53 @@ const bridgeToken = process.env.BRIDGE_TOKEN || process.env.PERSONAL_WHATSAPP_TO
 const webOrigin = process.env.WEB_ORIGIN || "https://web-zsfaouris-projects.vercel.app";
 const appBaseUrl = (process.env.APP_BASE_URL || webOrigin).replace(/\/$/, "");
 const sessionPath = process.env.WHATSAPP_SESSION_PATH || path.join(process.cwd(), ".wwebjs_auth");
+const reconnectMs = Math.max(0, Number(process.env.BRIDGE_RECONNECT_MS || 15000));
+const autoStart = process.env.BRIDGE_AUTO_START === "true";
+const productionBridge = process.env.NODE_ENV === "production" || Boolean(process.env.RENDER);
+const securityError = productionBridge && !bridgeToken ? "BRIDGE_TOKEN is required in production." : "";
+const allowedOrigins = new Set([
+  webOrigin,
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  ...(process.env.BRIDGE_ALLOWED_ORIGINS || "").split(",").map((item) => item.trim()).filter(Boolean),
+]);
 
 let client: InstanceType<typeof Client> | null = null;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
 const state: BridgeState = {
   state: "idle",
   qr: "",
   qrDataUrl: "",
-  error: "",
+  error: securityError,
   accountPhone: "",
   displayName: "",
   starting: false,
+  startedAt: "",
+  lastReadyAt: "",
+  lastMessageAt: "",
 };
 
 app.use(express.json({ limit: "2mb" }));
 app.use(cors({
   origin(origin, callback) {
-    if (!origin || origin === webOrigin || origin === "http://localhost:3000" || origin === "http://127.0.0.1:3000") {
+    if (!origin || allowedOrigins.has(origin)) {
       callback(null, true);
       return;
     }
-    callback(new Error("Origin not allowed"));
+    callback(new Error("Origin not allowed."));
   },
 }));
 
+function nowIso() {
+  return new Date().toISOString();
+}
+
 function authorize(req: Request, res: Response, next: NextFunction) {
+  if (securityError) {
+    res.status(503).json({ error: securityError });
+    return;
+  }
   if (!bridgeToken) {
     next();
     return;
@@ -69,7 +105,7 @@ function authorize(req: Request, res: Response, next: NextFunction) {
 function publicStatus() {
   return {
     provider: "personal",
-    configured: true,
+    configured: !securityError,
     state: state.state,
     qr: state.qr,
     qrDataUrl: state.qrDataUrl,
@@ -77,6 +113,9 @@ function publicStatus() {
     displayName: state.displayName,
     error: state.error,
     mode: "bridge",
+    startedAt: state.startedAt,
+    lastReadyAt: state.lastReadyAt,
+    lastMessageAt: state.lastMessageAt,
   };
 }
 
@@ -84,14 +123,21 @@ function puppeteerOptions() {
   return {
     headless: true,
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--no-first-run",
+      "--no-default-browser-check",
+    ],
   };
 }
 
 async function forwardInbound(from: string, text: string) {
   if (!appBaseUrl || !text.trim()) return;
   try {
-    await fetch(`${appBaseUrl}/api/rsvp/inbound`, {
+    const response = await fetch(`${appBaseUrl}/api/rsvp/inbound`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -99,16 +145,44 @@ async function forwardInbound(from: string, text: string) {
       },
       body: JSON.stringify({ phone: from, text }),
     });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({})) as { error?: string };
+      state.error = data.error || `Inbound RSVP forward failed: ${response.status}`;
+    }
   } catch (error) {
     state.error = error instanceof Error ? error.message : "Inbound RSVP forward failed.";
   }
+}
+
+function clearReconnect() {
+  if (!reconnectTimer) return;
+  clearTimeout(reconnectTimer);
+  reconnectTimer = null;
+}
+
+function scheduleReconnect(reason: string) {
+  if (!reconnectMs || reconnectTimer || securityError) return;
+  if (/logout|auth/i.test(reason)) return;
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    void startClient();
+  }, reconnectMs);
 }
 
 function attachClientEvents(nextClient: InstanceType<typeof Client>) {
   nextClient.on("qr", async (qr: string) => {
     state.state = "qr";
     state.qr = qr;
-    state.qrDataUrl = await qrcode.toDataURL(qr);
+    state.error = "";
+    try {
+      state.qrDataUrl = await qrcode.toDataURL(qr);
+    } catch (error) {
+      state.error = error instanceof Error ? error.message : "QR generation failed.";
+    }
+  });
+
+  nextClient.on("authenticated", () => {
+    state.state = "authenticated";
     state.error = "";
   });
 
@@ -121,12 +195,15 @@ function attachClientEvents(nextClient: InstanceType<typeof Client>) {
     state.accountPhone = info?.wid?.user || "";
     state.displayName = info?.pushname || "";
     state.error = "";
+    state.lastReadyAt = nowIso();
+    clearReconnect();
   });
 
   nextClient.on("auth_failure", (message: string) => {
     state.state = "auth_failure";
     state.starting = false;
     state.error = message || "WhatsApp authentication failed.";
+    client = null;
   });
 
   nextClient.on("disconnected", (reason: string) => {
@@ -134,35 +211,54 @@ function attachClientEvents(nextClient: InstanceType<typeof Client>) {
     state.starting = false;
     state.error = reason || "WhatsApp disconnected.";
     client = null;
+    scheduleReconnect(reason || "");
   });
 
-  nextClient.on("message", (message) => {
-    const from = message.from.replace(/@c\.us$/i, "");
-    void forwardInbound(from, message.body || "");
+  nextClient.on("message", (message: InboundMessage) => {
+    if (message.fromMe || message.isStatus) return;
+    const from = String(message.from || "").replace(/@c\.us$/i, "");
+    if (!from || /@g\.us$/i.test(from)) return;
+    const text = message.body || message.selectedButtonId || message.buttonText || "";
+    state.lastMessageAt = nowIso();
+    void forwardInbound(from, text);
   });
 }
 
-function startClient() {
+async function startClient() {
+  if (securityError) return publicStatus();
   if (client || state.starting) return publicStatus();
+  clearReconnect();
   state.starting = true;
   state.state = "starting";
   state.error = "";
+  state.startedAt = nowIso();
 
-  client = new Client({
+  const nextClient = new Client({
     authStrategy: new LocalAuth({
       clientId: "hamza-shouq",
       dataPath: sessionPath,
     }),
     puppeteer: puppeteerOptions(),
   });
-  attachClientEvents(client);
-  client.initialize().catch((error: unknown) => {
+  client = nextClient;
+  attachClientEvents(nextClient);
+  nextClient.initialize().catch((error: unknown) => {
     state.state = "error";
     state.starting = false;
     state.error = error instanceof Error ? error.message : "WhatsApp session failed to start.";
     client = null;
+    scheduleReconnect(state.error);
   });
   return publicStatus();
+}
+
+async function stopClient() {
+  clearReconnect();
+  const current = client;
+  client = null;
+  state.starting = false;
+  if (!current) return;
+  await current.destroy().catch(() => undefined);
 }
 
 const sendSchema = z.object({
@@ -171,19 +267,7 @@ const sendSchema = z.object({
   mediaUrl: z.string().url().optional().or(z.literal("")),
 });
 
-app.get("/healthz", (_req, res) => {
-  res.json({ ok: true, status: state.state });
-});
-
-app.get("/api/whatsapp/status", authorize, (_req, res) => {
-  res.json(publicStatus());
-});
-
-app.post("/api/whatsapp/start", authorize, (_req, res) => {
-  res.json(startClient());
-});
-
-app.post("/api/whatsapp/test", authorize, async (req, res) => {
+async function sendMessage(req: Request, res: Response) {
   if (state.state !== "ready" || !client) {
     res.status(409).json({ error: `Personal WhatsApp is not ready. Current state: ${state.state}` });
     return;
@@ -196,13 +280,43 @@ app.post("/api/whatsapp/test", authorize, async (req, res) => {
     : await client.sendMessage(chatId, input.message) as SendResult;
   const id = typeof result.id === "string" ? result.id : result.id?._serialized || "";
   res.json({ ok: true, id });
+}
+
+app.get("/healthz", (_req, res) => {
+  res.status(securityError ? 503 : 200).json({ ok: !securityError, status: state.state, error: securityError });
 });
+
+app.get("/api/whatsapp/status", authorize, (_req, res) => {
+  res.json(publicStatus());
+});
+
+app.post("/api/whatsapp/start", authorize, async (_req, res) => {
+  res.json(await startClient());
+});
+
+app.post("/api/whatsapp/send", authorize, sendMessage);
+
+app.post("/api/whatsapp/test", authorize, sendMessage);
 
 app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
   const message = error instanceof Error ? error.message : "Bridge request failed.";
   res.status(400).json({ error: message });
 });
 
-app.listen(port, () => {
+app.listen(port, "0.0.0.0", () => {
   console.log(`WhatsApp bridge listening on ${port}`);
+  if (autoStart) void startClient();
+});
+
+async function shutdown() {
+  await stopClient();
+  process.exit(0);
+}
+
+process.on("SIGTERM", () => {
+  void shutdown();
+});
+
+process.on("SIGINT", () => {
+  void shutdown();
 });

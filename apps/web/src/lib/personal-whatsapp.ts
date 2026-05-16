@@ -170,7 +170,7 @@ export async function startPersonal(settings: WhatsAppSettings): Promise<WhatsAp
 
 export async function sendPersonal(settings: WhatsAppSettings, to: string, body: string, mediaUrl?: string) {
   if (settings.personalBridgeUrl.trim()) {
-    const data = await bridgeRequest<{ id?: string }>(settings, "/api/whatsapp/test", {
+    const data = await bridgeRequest<{ id?: string }>(settings, "/api/whatsapp/send", {
       method: "POST",
       body: JSON.stringify({ phone: to, message: body, mediaUrl }),
     });

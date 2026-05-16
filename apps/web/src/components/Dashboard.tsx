@@ -6,6 +6,13 @@ import { useEffect, useMemo, useState } from "react";
 import type { AppState, SheetTab, WhatsAppStatus } from "@/lib/types";
 
 type PublicState = AppState;
+type StorageStatus = {
+  configured: boolean;
+  selectOk: boolean;
+  writeOk: boolean;
+  error: string;
+  keyKind?: string;
+};
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -27,9 +34,11 @@ export default function Dashboard() {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
+  const [uploadingMedia, setUploadingMedia] = useState(false);
   const [sendConfirm, setSendConfirm] = useState("");
   const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set());
   const [whatsAppStatus, setWhatsAppStatus] = useState<WhatsAppStatus | null>(null);
+  const [storageStatus, setStorageStatus] = useState<StorageStatus | null>(null);
 
   async function refresh() {
     const data = await api<PublicState>("/api/state");
@@ -95,6 +104,40 @@ export default function Dashboard() {
       show("Template saved and message previews rebuilt.");
     } catch (err) {
       show(err instanceof Error ? err.message : "Template save failed.", true);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function uploadMedia(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setUploadingMedia(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const response = await fetch("/api/media/upload", { method: "POST", body: form });
+      const data = await response.json().catch(() => ({})) as { mediaUrl?: string; error?: string };
+      if (!response.ok) throw new Error(data.error || `Upload failed: ${response.status}`);
+      if (data.mediaUrl) setMediaUrl(data.mediaUrl);
+      await refresh();
+      show("Image uploaded and attached to the template.");
+    } catch (err) {
+      show(err instanceof Error ? err.message : "Image upload failed.", true);
+    } finally {
+      setUploadingMedia(false);
+    }
+  }
+
+  async function checkStorage() {
+    setBusy("storage");
+    try {
+      const result = await api<StorageStatus>("/api/storage/diagnostics");
+      setStorageStatus(result);
+      show(result.error || `Storage status: read ${result.selectOk ? "ok" : "failed"}, write ${result.writeOk ? "ok" : "failed"}`, !result.selectOk || !result.writeOk);
+    } catch (err) {
+      show(err instanceof Error ? err.message : "Storage diagnostics failed.", true);
     } finally {
       setBusy("");
     }
@@ -185,6 +228,31 @@ export default function Dashboard() {
     };
   }, [state]);
 
+  const templatePreview = useMemo(() => {
+    const contact = state?.campaign.contacts[0] || {
+      id: "preview-contact",
+      name: "Guest name",
+      phone: "962795941263",
+      sourceTab: "Preview",
+      fields: {},
+    };
+    const token = state?.campaign.messages.find((message) => message.contactId === contact.id)?.token || "preview";
+    const base = typeof window === "undefined" ? "" : `${window.location.origin}/rsvp/${encodeURIComponent(token)}`;
+    const values: Record<string, string> = {
+      name: contact.name,
+      phone: contact.phone,
+      source_tab: contact.sourceTab,
+      attending_link: `${base}?response=YES`,
+      not_attending_link: `${base}?response=NO`,
+      rsvp_link: base,
+    };
+    const rendered = templateBody.replace(/\{\{\s*([\w.-]+)\s*\}\}/g, (_match, key: string) => {
+      return values[key] || contact.fields[key] || "";
+    });
+    if (/\{\{\s*(attending_link|not_attending_link|rsvp_link)\s*\}\}/i.test(templateBody)) return rendered;
+    return `${rendered.trimEnd()}\n\nAttending: ${values.attending_link}\nNot attending: ${values.not_attending_link}`;
+  }, [state?.campaign.contacts, state?.campaign.messages, templateBody]);
+
   if (!state) return <main className="login-page"><p className="notice">Loading...</p></main>;
 
   return (
@@ -241,10 +309,33 @@ export default function Dashboard() {
               <textarea className="textarea" value={templateBody} onChange={(event) => setTemplateBody(event.target.value)} />
             </div>
             <div className="field">
+              <label>Image</label>
+              <input className="input" type="file" accept="image/*" disabled={uploadingMedia} onChange={uploadMedia} />
+              {uploadingMedia ? <small className="muted">Uploading image...</small> : null}
+            </div>
+            <div className="field">
               <label>Media URL</label>
               <input className="input" value={mediaUrl} onChange={(event) => setMediaUrl(event.target.value)} placeholder="Optional public image URL" />
             </div>
-            <button className="btn primary" disabled={busy === "template"} onClick={saveTemplate}>{busy === "template" ? "Saving..." : "Save Template"}</button>
+            {mediaUrl ? (
+              <div className="media-preview">
+                <img src={mediaUrl} alt="Template media preview" />
+              </div>
+            ) : null}
+            <div className="template-preview">
+              <b>Message preview</b>
+              <p>{templatePreview}</p>
+            </div>
+            <div className="row">
+              <button className="btn primary" disabled={busy === "template"} onClick={saveTemplate}>{busy === "template" ? "Saving..." : "Save Template"}</button>
+              <button className="btn" disabled={busy === "storage"} onClick={checkStorage}>{busy === "storage" ? "Checking..." : "Check Storage"}</button>
+            </div>
+            {storageStatus ? (
+              <p className={`notice ${storageStatus.selectOk && storageStatus.writeOk ? "ok" : "error"}`}>
+                Storage: {storageStatus.configured ? "configured" : "missing"} · read {storageStatus.selectOk ? "ok" : "failed"} · write {storageStatus.writeOk ? "ok" : "failed"}
+                {storageStatus.error ? `\n${storageStatus.error}` : ""}
+              </p>
+            ) : null}
           </div>
 
           <form className="panel" onSubmit={submitSettings}>

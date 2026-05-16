@@ -1,12 +1,16 @@
 services:
   - type: web
     name: hamza-shouq-whatsapp-bridge
-    runtime: node
+    runtime: docker
     plan: starter
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @hamza-and-shouq/bridge build
-    startCommand: pnpm --filter @hamza-and-shouq/bridge start
+    dockerfilePath: ./apps/bridge/Dockerfile
+    dockerContext: .
+    autoDeployTrigger: commit
     healthCheckPath: /healthz
+    maxShutdownDelaySeconds: 60
     envVars:
+      - key: NODE_ENV
+        value: production
       - key: NODE_VERSION
         value: 22
       - key: WEB_ORIGIN
@@ -15,6 +19,12 @@ services:
         value: https://web-zsfaouris-projects.vercel.app
       - key: WHATSAPP_SESSION_PATH
         value: /var/data/wwebjs_auth
+      - key: PUPPETEER_EXECUTABLE_PATH
+        value: /usr/bin/chromium
+      - key: BRIDGE_AUTO_START
+        value: true
+      - key: BRIDGE_RECONNECT_MS
+        value: 15000
       - key: BRIDGE_TOKEN
         sync: false
     disk:

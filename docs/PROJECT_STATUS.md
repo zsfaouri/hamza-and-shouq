@@ -22,6 +22,8 @@ Kept as core product:
 - Personal WhatsApp provider settings
 - Personal bridge/local QR status and start routes
 - Persistent `apps/bridge` service for Personal WhatsApp
+- Template image upload and preview
+- Visible storage diagnostics so template saves cannot silently fall back to Vercel memory
 - guarded selected-row sending
 - RSVP links
 - WhatsApp webhook RSVP readback
@@ -77,6 +79,8 @@ The persistent bridge lives at:
 ```text
 apps/bridge
 ```
+
+The bridge deployment is Docker-based so Chromium is installed explicitly. Render must provide the public bridge URL before Vercel can be fully configured with `PERSONAL_WHATSAPP_API_URL`.
 
 Deployment instructions:
 

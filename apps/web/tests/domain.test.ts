@@ -14,6 +14,9 @@ const template: Template = {
   name: "Invite",
   body: "Hi {{name}}. Seats: {{seats}}. Yes {{attending_link}} No {{not_attending_link}}",
   mediaUrl: "",
+  mediaName: "",
+  mediaMimeType: "",
+  mediaData: "",
   includeRsvpLinks: true,
   updatedAt: new Date(0).toISOString(),
 };

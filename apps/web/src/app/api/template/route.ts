@@ -12,11 +12,16 @@ export async function POST(request: Request) {
   const body = String(input.body || "").trim();
   if (!body) return Response.json({ error: "Template body is required." }, { status: 400 });
   const state = await loadState();
+  const nextMediaUrl = String(input.mediaUrl || "").trim();
+  const keepUploadedMedia = Boolean(state.template.mediaData && nextMediaUrl && (nextMediaUrl === state.template.mediaUrl || nextMediaUrl.includes("/api/media/template")));
   state.template = {
     ...state.template,
     name: String(input.name || state.template.name || "Wedding invitation").trim(),
     body,
-    mediaUrl: String(input.mediaUrl || "").trim(),
+    mediaUrl: nextMediaUrl,
+    mediaName: keepUploadedMedia ? state.template.mediaName : "",
+    mediaMimeType: keepUploadedMedia ? state.template.mediaMimeType : "",
+    mediaData: keepUploadedMedia ? state.template.mediaData : "",
     includeRsvpLinks: true,
     updatedAt: nowIso(),
   };

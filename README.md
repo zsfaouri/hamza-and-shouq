@@ -1,6 +1,6 @@
 # Hamza and Shouq RSVP System
 
-Next.js dashboard plus persistent WhatsApp bridge for importing invitation lists from Google Sheets, saving one WhatsApp message template, sending selected WhatsApp messages, and recording RSVP replies.
+Next.js dashboard plus persistent WhatsApp bridge for importing invitation lists from Google Sheets, saving one WhatsApp message template, uploading a template image, sending selected WhatsApp messages, and recording RSVP replies.
 
 ## Links
 
@@ -75,7 +75,7 @@ PERSONAL_WHATSAPP_API_URL=
 PERSONAL_WHATSAPP_TOKEN=
 ```
 
-If `PERSONAL_WHATSAPP_API_URL` is empty, local development uses an in-process QR session. Vercel cannot run that session durably, so production personal sending needs a persistent bridge URL.
+If `PERSONAL_WHATSAPP_API_URL` is empty, local development uses an in-process QR session. Vercel cannot run that session durably, so production personal sending needs a persistent bridge URL. The included `render.yaml` deploys `apps/bridge` as a Docker service with Chromium and a persistent `/var/data` session disk.
 
 Bridge documentation:
 
@@ -136,6 +136,14 @@ Then set:
 ```text
 SUPABASE_URL
 SUPABASE_SERVICE_ROLE_KEY
+```
+
+The app also supports Supabase publishable keys when the SQL policy in `docs/SUPABASE_SCHEMA.sql` is installed. Template saves now fail visibly on Vercel if persistent storage cannot write, instead of pretending a memory-only save is durable.
+
+Uploaded template images are stored in the same persisted app state and served from:
+
+```text
+/api/media/template
 ```
 
 ## Validation

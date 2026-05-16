@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const nextConfig: NextConfig = {
-  outputFileTracingRoot: join(__dirname, "../.."),
+  outputFileTracingRoot: process.env.VERCEL ? undefined : join(__dirname, "../.."),
   serverExternalPackages: ["xlsx"],
 };
 

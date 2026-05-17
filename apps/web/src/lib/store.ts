@@ -61,8 +61,8 @@ function normalizeState(input: Partial<AppState> | null | undefined): AppState {
   };
   const metaConfigured = Boolean(merged.whatsapp.phoneNumberId && merged.whatsapp.accessToken && merged.whatsapp.accessToken !== "SET");
   merged.whatsapp.provider = merged.whatsapp.provider === "personal" || !metaConfigured ? "personal" : "meta";
-  merged.whatsapp.personalBridgeUrl ||= "";
-  merged.whatsapp.personalBridgeToken ||= "";
+  merged.whatsapp.personalBridgeUrl ||= process.env.PERSONAL_WHATSAPP_API_URL || "";
+  merged.whatsapp.personalBridgeToken ||= process.env.PERSONAL_WHATSAPP_TOKEN || "";
   merged.campaign.contacts ||= [];
   merged.campaign.messages ||= [];
   merged.campaign.selectedTabs ||= [];

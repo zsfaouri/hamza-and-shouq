@@ -55,6 +55,46 @@ async function main() {
       global.fetch = originalFetch;
     }
   });
+
+  await withTempEnv("bridge-env-fallback", {
+    VERCEL: "1",
+    SUPABASE_URL: "https://supabase.example.test",
+    NEXT_PUBLIC_SUPABASE_URL: "",
+    SUPABASE_SERVICE_ROLE_KEY: "service-key",
+    SUPABASE_SECRET_KEY: "",
+    SUPABASE_ANON_KEY: "",
+    SUPABASE_PUBLISHABLE_KEY: "",
+    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "",
+    PERSONAL_WHATSAPP_API_URL: "https://bridge.example.test",
+    PERSONAL_WHATSAPP_TOKEN: "bridge-secret",
+  }, async (moduleUrl) => {
+    const originalFetch = global.fetch;
+    global.fetch = async () => new Response(JSON.stringify([{
+      data: {
+        version: 1,
+        whatsapp: {
+          provider: "personal",
+          graphVersion: "v23.0",
+          phoneNumberId: "",
+          accessToken: "",
+          verifyToken: "verify",
+          senderPhone: "962795941263",
+          personalBridgeUrl: "",
+          personalBridgeToken: "",
+        },
+      },
+    }]), { status: 200 });
+
+    try {
+      const { loadState } = await import(moduleUrl);
+      const state = await loadState();
+
+      assert.equal(state.whatsapp.personalBridgeUrl, "https://bridge.example.test");
+      assert.equal(state.whatsapp.personalBridgeToken, "bridge-secret");
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
 }
 
 async function withTempEnv(

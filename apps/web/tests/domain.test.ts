@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { activeTemplate, createTemplate, defaultState, renderBody, setActiveTemplate, setRsvp, upsertTemplate } from "../src/lib/domain";
+import { activeTemplate, createTemplate, defaultState, imageDataUrl, renderBody, setActiveTemplate, setRsvp, upsertTemplate } from "../src/lib/domain";
 import type { AppState, Contact, Message, Template } from "../src/lib/types";
 
 const contact: Contact = {
@@ -72,5 +72,7 @@ assert.equal(multi.template.name, "Reminder");
 setActiveTemplate(multi, "template-main");
 assert.equal(activeTemplate(multi).name, "Wedding invitation");
 assert.equal(multi.template.id, "template-main");
+assert.equal(imageDataUrl("image/png", "abc123"), "data:image/png;base64,abc123");
+assert.equal(imageDataUrl("", "abc123"), "");
 
 console.log("domain tests passed");

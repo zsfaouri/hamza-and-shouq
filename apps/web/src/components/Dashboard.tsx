@@ -154,10 +154,11 @@ export default function Dashboard() {
       const form = new FormData();
       form.append("file", file);
       const response = await fetch("/api/media/upload", { method: "POST", body: form });
-      const data = await response.json().catch(() => ({})) as { mediaUrl?: string; error?: string };
+      const data = await response.json().catch(() => ({})) as { mediaUrl?: string; previewUrl?: string; error?: string };
       if (!response.ok) throw new Error(data.error || `Upload failed: ${response.status}`);
-      if (data.mediaUrl) setMediaUrl(data.mediaUrl);
-      await refresh();
+      const nextMediaUrl = data.previewUrl || data.mediaUrl || "";
+      await refresh().catch(() => {});
+      if (nextMediaUrl) setMediaUrl(nextMediaUrl);
       show("Image uploaded and attached to the template.");
     } catch (err) {
       show(err instanceof Error ? err.message : "Image upload failed.", true);

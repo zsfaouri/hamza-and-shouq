@@ -26,6 +26,14 @@ function supabaseHeaders(key: string, contentType = false) {
   return headers;
 }
 
+function storageError(label: string, status: number, text: string) {
+  const detail = text.slice(0, 160);
+  if (text.includes("PGRST205") || text.includes("hs_app_state")) {
+    return `${label} ${status}: missing public.hs_app_state table. Run docs/SUPABASE_SCHEMA.sql in Supabase. ${detail}`;
+  }
+  return `${label} ${status}: ${detail}`;
+}
+
 function normalizeState(input: Partial<AppState> | null | undefined): AppState {
   const base = defaultState();
   const legacyTemplate = { ...base.template, ...(input?.template || {}) };
@@ -109,19 +117,23 @@ export async function saveState(state: AppState) {
     });
     if (response.ok) {
       memoryRef().__hsState = state;
-      return;
+      return true;
     }
-    const text = await response.text().catch(() => "");
-    if (process.env.VERCEL) throw new Error(`Persistent storage write failed: ${response.status} ${text.slice(0, 220)}`);
+    if (process.env.VERCEL) {
+      memoryRef().__hsState = state;
+      return false;
+    }
   }
 
   try {
     await mkdir(path.dirname(localFile), { recursive: true });
     await writeFile(localFile, JSON.stringify(state, null, 2));
     memoryRef().__hsState = state;
+    return true;
   } catch {
     if (process.env.VERCEL) throw new Error("Persistent storage is not configured.");
     memoryRef().__hsState = state;
+    return false;
   }
 }
 
@@ -152,7 +164,7 @@ export async function storageDiagnostics() {
   try {
     const select = await fetch(`${config.url}/rest/v1/hs_app_state?id=eq.main&select=id`, { headers, cache: "no-store" });
     out.selectOk = select.ok;
-    if (!select.ok) out.error = `select ${select.status}: ${(await select.text()).slice(0, 160)}`;
+    if (!select.ok) out.error = storageError("select", select.status, await select.text());
   } catch (error) {
     out.error = error instanceof Error ? error.message : "select failed";
   }
@@ -163,7 +175,7 @@ export async function storageDiagnostics() {
       body: JSON.stringify({ id: "__probe", data: { checkedAt: new Date().toISOString() }, updated_at: new Date().toISOString() }),
     });
     out.writeOk = probe.ok;
-    if (!probe.ok) out.error = `write ${probe.status}: ${(await probe.text()).slice(0, 160)}`;
+    if (!probe.ok) out.error = storageError("write", probe.status, await probe.text());
   } catch (error) {
     out.error = error instanceof Error ? error.message : "write failed";
   }

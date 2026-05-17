@@ -25,6 +25,11 @@ export function defaultTemplate(): Template {
   };
 }
 
+export function imageDataUrl(mimeType: string, mediaData: string) {
+  if (!mimeType || !mediaData) return "";
+  return `data:${mimeType};base64,${mediaData}`;
+}
+
 export function createTemplate(name = "Wedding invitation", body = defaultTemplate().body): Template {
   return {
     ...defaultTemplate(),

@@ -746,115 +746,6 @@ button {
   line-height: 1.45;
 }
 
-.budget-hero {
-  padding: 34px;
-  border: 1px solid var(--line);
-  border-radius: 20px;
-  background: #fff;
-}
-
-.budget-hero strong {
-  display: block;
-  margin-top: 12px;
-  font-size: 42px;
-  letter-spacing: -0.04em;
-}
-
-.budget-hero small {
-  display: block;
-  margin-top: 30px;
-  color: var(--muted);
-  font-size: 20px;
-  font-weight: 800;
-}
-
-.budget-progress {
-  height: 9px;
-  margin-top: 26px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: #eef2f7;
-}
-
-.budget-progress span {
-  display: block;
-  width: 71%;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--primary);
-}
-
-.budget-grid {
-  display: grid;
-  grid-template-columns: 180px minmax(0, 1fr);
-  gap: 28px;
-  align-items: center;
-  margin-top: 24px;
-  padding: 28px;
-  border: 1px solid var(--line);
-  border-radius: 20px;
-}
-
-.donut {
-  display: grid;
-  place-items: center;
-  width: 150px;
-  height: 150px;
-  border-radius: 999px;
-  background: conic-gradient(var(--primary) 0 45%, #54616f 45% 70%, #81858b 70% 85%, #eef2f7 85% 100%);
-}
-
-.donut span {
-  display: grid;
-  place-items: center;
-  width: 92px;
-  height: 92px;
-  border-radius: 999px;
-  background: #fff;
-  color: var(--muted);
-  font-size: 11px;
-  text-align: center;
-  text-transform: uppercase;
-}
-
-.donut b {
-  color: var(--ink);
-  font-size: 15px;
-  text-transform: none;
-}
-
-.legend {
-  display: grid;
-  gap: 16px;
-}
-
-.legend p {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 0;
-  color: #52525b;
-  font-size: 16px;
-}
-
-.dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 999px;
-}
-
-.dot.blue {
-  background: var(--primary);
-}
-
-.dot.slate {
-  background: #54616f;
-}
-
-.dot.gray {
-  background: #81858b;
-}
-
 .table-wrap {
   overflow: auto;
   border: 1px solid var(--line);
@@ -1011,12 +902,7 @@ tr:hover td {
     box-shadow: 170px 0 0 #f0f0f0, 340px 0 0 #f0f0f0;
   }
 
-  .template-switcher,
-  .budget-grid {
+  .template-switcher {
     grid-template-columns: 1fr;
-  }
-
-  .budget-grid {
-    justify-items: center;
   }
 }

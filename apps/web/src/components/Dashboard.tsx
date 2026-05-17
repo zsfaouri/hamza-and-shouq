@@ -559,32 +559,6 @@ export default function Dashboard() {
             ) : null}
           </form>
 
-          <div className="panel panel-budget">
-            <div className="section-heading compact">
-              <div>
-                <h2>Budget Tracker</h2>
-                <p>Premium planning summary from the Stitch budget screen.</p>
-              </div>
-              <span className="pill yes">71% spent</span>
-            </div>
-            <div className="budget-hero">
-              <span>Total Budget</span>
-              <strong>$85,000.00</strong>
-              <small>Remaining $24,350.12</small>
-              <div className="budget-progress"><span /></div>
-            </div>
-            <div className="budget-grid">
-              <div className="donut" aria-label="Budget distribution">
-                <span>Total<br /><b>32 Items</b></span>
-              </div>
-              <div className="legend">
-                <p><i className="dot blue" />Venue (45%)</p>
-                <p><i className="dot slate" />Catering (25%)</p>
-                <p><i className="dot gray" />Florist (15%)</p>
-              </div>
-            </div>
-          </div>
-
           <div className="panel panel-send">
             <div className="section-heading compact">
               <div>

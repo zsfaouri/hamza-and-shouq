@@ -45,10 +45,10 @@ export default function Dashboard() {
     const data = await api<PublicState>("/api/state");
     const active = data.templates.find((template) => template.id === data.activeTemplateId) || data.template;
     setState(data);
-    setSheetUrl(data.campaign.sheetUrl);
+    setSheetUrl(data.campaign.sheetUrl || "");
     setTemplateName(active.name);
     setTemplateBody(active.body);
-    setMediaUrl(active.mediaUrl);
+    setMediaUrl(active.mediaUrl || "");
   }
 
   useEffect(() => {
@@ -256,12 +256,16 @@ export default function Dashboard() {
 
   const stats = useMemo(() => {
     const messages = state?.campaign.messages || [];
+    const contacts = state?.campaign.contacts.length || 0;
+    const yes = messages.filter((message) => message.rsvp === "YES").length;
+    const no = messages.filter((message) => message.rsvp === "NO").length;
     return {
-      contacts: state?.campaign.contacts.length || 0,
+      contacts,
       ready: messages.filter((message) => message.status === "READY").length,
       sent: messages.filter((message) => message.status === "SENT").length,
-      yes: messages.filter((message) => message.rsvp === "YES").length,
-      no: messages.filter((message) => message.rsvp === "NO").length,
+      yes,
+      no,
+      pending: Math.max(contacts - yes - no, 0),
     };
   }, [state]);
 
@@ -298,26 +302,69 @@ export default function Dashboard() {
     );
   }
   const activeTemplateId = state.activeTemplateId || state.template.id;
+  const responseRate = stats.contacts ? Math.round(((stats.yes + stats.no) / stats.contacts) * 100) : 0;
+  const capacityTotal = Math.max(stats.contacts, 250);
+  const capacityOffset = 263.8 - (Math.min(stats.contacts / capacityTotal, 1) * 263.8);
+  const firstContact = state.campaign.contacts[0];
+  const previewMedia = mediaUrl || state.templates.find((template) => template.id === activeTemplateId)?.mediaUrl || "";
+  const storageReady = Boolean(storageStatus?.selectOk && storageStatus?.writeOk);
+  const storageLabel = storageStatus
+    ? storageReady
+      ? storageStatus.keyKind === "local-file"
+        ? "Local file ready"
+        : "Persistent storage ready"
+      : "Storage action required"
+    : process.env.NODE_ENV === "development"
+      ? "Run storage check"
+      : "Verify persistence";
+  const whatsappLabel = whatsAppStatus
+    ? whatsAppStatus.error
+      ? "Needs attention"
+      : whatsAppStatus.state
+    : state.whatsapp.provider === "personal" && !state.whatsapp.personalBridgeUrl
+      ? "Local QR mode"
+      : state.whatsapp.provider === "personal"
+        ? "Bridge mode"
+        : "Cloud API";
 
   return (
-    <main className="app-shell">
+    <main className="app-shell elysian-shell">
       <header className="topbar">
-        <div className="brand">
-          <h1>Hamza and Shouq</h1>
-          <span>RSVP operations desk</span>
+        <div className="brand brand-row">
+          <button className="icon-btn" type="button" aria-label="Open navigation">=</button>
+          <h1>HAMZA & SHOUQ</h1>
         </div>
         <div className="topbar-actions">
-          <span className="live-dot">Production</span>
+          <span className="topbar-chip">{storageLabel}</span>
+          <span className="topbar-chip">{whatsappLabel}</span>
+          <img className="avatar" src="/logo.png" alt="Hamza and Shouq" />
           <button className="btn" onClick={() => fetch("/api/auth/logout", { method: "POST" }).then(() => { window.location.href = "/login"; })}>Logout</button>
         </div>
       </header>
 
       <div className="content">
         <section className="status-rail">
-          <div className="stat primary-stat"><span>Contacts</span><strong>{stats.contacts}</strong></div>
-          <div className="stat"><span>Ready</span><strong>{stats.ready}</strong></div>
-          <div className="stat"><span>Sent</span><strong>{stats.sent}</strong></div>
-          <div className="stat"><span>RSVP yes/no</span><strong>{stats.yes}/{stats.no}</strong></div>
+          <div className="dashboard-intro">
+            <h2>RSVP Overview</h2>
+            <p>Live operations for Hamza and Shouq</p>
+          </div>
+          <div className="stat primary-stat"><span>Confirmed</span><strong>{stats.yes}</strong><small>accepted</small></div>
+          <div className="stat"><span>Pending</span><strong>{stats.pending}</strong><small>{stats.ready} ready</small></div>
+          <div className="stat"><span>Declined</span><strong>{stats.no}</strong><small>not attending</small></div>
+          <div className="stat accent-stat"><span>Response Rate</span><strong>{responseRate}%</strong><small>{stats.sent} sent</small></div>
+          <div className="capacity-card">
+            <p>Total Guest Capacity</p>
+            <div className="capacity-ring">
+              <svg viewBox="0 0 100 100" aria-hidden="true">
+                <circle className="ring-bg" cx="50" cy="50" r="42" />
+                <circle className="ring-fg" cx="50" cy="50" r="42" strokeDasharray="263.8" strokeDashoffset={capacityOffset} />
+              </svg>
+              <div>
+                <strong>{stats.contacts}</strong>
+                <span>/ {capacityTotal} Guests</span>
+              </div>
+            </div>
+          </div>
           {(notice || error) ? <p className={`notice ${error ? "error" : "ok"}`}>{error || notice}</p> : null}
         </section>
 
@@ -325,9 +372,18 @@ export default function Dashboard() {
           <div className="panel panel-sheets">
             <div className="section-heading">
               <div>
-                <h2>Google Sheets</h2>
-                <p>Detect tabs, choose the real guest lists, then import only checked rows.</p>
+                <span className="step-line" />
+                <h2>Import Guests</h2>
+                <p>Select the spreadsheet containing your wedding guest list to begin syncing.</p>
               </div>
+            </div>
+            <div className="connected-account">
+              <span className="sheet-icon">GS</span>
+              <div>
+                <small>Connected account</small>
+                <strong>Google Sheets</strong>
+              </div>
+              <span className="checkmark">OK</span>
             </div>
             <div className="field">
               <label>Sheet URL</label>
@@ -359,14 +415,27 @@ export default function Dashboard() {
                   </label>
                 ))}
               </div>
-            ) : null}
+            ) : (
+              <div className="import-examples" aria-label="Stitch guest import preview">
+                <div className="sheet-card active">
+                  <span className="doc-icon">SH</span>
+                  <div><b>Hamza</b><small>142 contacts</small></div>
+                  <span className="pill yes">Ready to sync</span>
+                </div>
+                <div className="sheet-card">
+                  <span className="doc-icon">SH</span>
+                  <div><b>Shouq</b><small>88 contacts</small></div>
+                  <span className="pill">Archived</span>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="panel panel-template">
             <div className="section-heading">
               <div>
-                <h2>Message Template</h2>
-                <p>Template, media, preview, and storage check in one editing surface.</p>
+                <h2>Template Builder</h2>
+                <p>Compose the invitation and preview its WhatsApp appearance.</p>
               </div>
             </div>
             <div className="template-switcher">
@@ -401,6 +470,11 @@ export default function Dashboard() {
               <label>Body</label>
               <textarea className="textarea" value={templateBody} onChange={(event) => setTemplateBody(event.target.value)} />
             </div>
+            <div className="variable-row" aria-label="Template variables">
+              <button className="variable-pill" type="button" onClick={() => setTemplateBody(`${templateBody} {{name}}`)}>+ Guest Name</button>
+              <button className="variable-pill" type="button" onClick={() => setTemplateBody(`${templateBody} {{attending_link}}`)}>+ RSVP</button>
+              <button className="variable-pill" type="button" onClick={() => setTemplateBody(`${templateBody} {{source_tab}}`)}>+ Source</button>
+            </div>
             <div className="field">
               <label>Image</label>
               <input className="input" type="file" accept="image/*" disabled={uploadingMedia} onChange={uploadMedia} />
@@ -408,7 +482,7 @@ export default function Dashboard() {
             </div>
             <div className="field">
               <label>Media URL</label>
-              <input className="input" value={mediaUrl} onChange={(event) => setMediaUrl(event.target.value)} placeholder="Optional public image URL" />
+              <input className="input" value={mediaUrl || ""} onChange={(event) => setMediaUrl(event.target.value)} placeholder="Optional public image URL" />
             </div>
             {mediaUrl ? (
               <div className="media-preview">
@@ -416,18 +490,33 @@ export default function Dashboard() {
               </div>
             ) : null}
             <div className="template-preview">
-              <b>Message preview</b>
-              <p>{templatePreview}</p>
+              <b>Live Appearance</b>
+              <div className="phone-preview">
+                <div className="phone-top"><span>HS</span><strong>Hamza and Shouq</strong></div>
+                <div className="phone-body">
+                  <div className="whatsapp-bubble">
+                    {previewMedia ? <img src={previewMedia} alt="Template media preview" /> : null}
+                    <p>{templatePreview}</p>
+                    <small>{firstContact?.name || "Guest"} - WhatsApp preview</small>
+                  </div>
+                </div>
+              </div>
             </div>
             <div className="row">
               <button className="btn primary" disabled={busy === "template"} onClick={saveTemplate}>{busy === "template" ? "Saving..." : "Save Template"}</button>
               <button className="btn" disabled={busy === "storage"} onClick={checkStorage}>{busy === "storage" ? "Checking..." : "Check Storage"}</button>
             </div>
             {storageStatus ? (
-              <p className={`notice ${storageStatus.selectOk && storageStatus.writeOk ? "ok" : "error"}`}>
-                Storage: {storageStatus.configured ? "configured" : "missing"} · read {storageStatus.selectOk ? "ok" : "failed"} · write {storageStatus.writeOk ? "ok" : "failed"}
-                {storageStatus.error ? `\n${storageStatus.error}` : ""}
-              </p>
+              <div className={`status-card ${storageReady ? "ok" : "error"}`}>
+                <span className="status-mark">{storageReady ? "OK" : "!"}</span>
+                <div>
+                  <b>{storageLabel}</b>
+                  <p>
+                    {storageStatus.configured ? "Configured" : "Missing config"} - read {storageStatus.selectOk ? "ok" : "failed"} - write {storageStatus.writeOk ? "ok" : "failed"}
+                    {storageStatus.error ? `\n${storageStatus.error}` : ""}
+                  </p>
+                </div>
+              </div>
             ) : null}
           </div>
 
@@ -437,6 +526,7 @@ export default function Dashboard() {
                 <h2>WhatsApp</h2>
                 <p>Provider settings, bridge checks, and QR startup controls.</p>
               </div>
+              <span className={`pill ${whatsAppStatus?.error ? "warn" : whatsAppStatus?.configured ? "yes" : ""}`}>{whatsappLabel}</span>
             </div>
             <div className="field">
               <label>Provider</label>
@@ -445,27 +535,56 @@ export default function Dashboard() {
                 <option value="meta">Meta WhatsApp Cloud API</option>
               </select>
             </div>
-            <div className="field"><label>Sender phone</label><input className="input" name="senderPhone" defaultValue={state.whatsapp.senderPhone} /></div>
-            <div className="field"><label>Personal bridge URL</label><input className="input" name="personalBridgeUrl" defaultValue={state.whatsapp.personalBridgeUrl} placeholder="Optional persistent bridge URL" /></div>
+            <div className="field"><label>Sender phone</label><input className="input" name="senderPhone" defaultValue={state.whatsapp.senderPhone || ""} /></div>
+            <div className="field"><label>Personal bridge URL</label><input className="input" name="personalBridgeUrl" defaultValue={state.whatsapp.personalBridgeUrl || ""} placeholder="Optional persistent bridge URL" /></div>
             <div className="field"><label>Personal bridge token</label><input className="input" name="personalBridgeToken" placeholder={state.whatsapp.personalBridgeToken === "SET" ? "Token is saved" : "Optional bridge token"} /></div>
-            <div className="field"><label>Graph version</label><input className="input" name="graphVersion" defaultValue={state.whatsapp.graphVersion} /></div>
-            <div className="field"><label>Phone number ID</label><input className="input" name="phoneNumberId" defaultValue={state.whatsapp.phoneNumberId} /></div>
+            <div className="field"><label>Graph version</label><input className="input" name="graphVersion" defaultValue={state.whatsapp.graphVersion || "v23.0"} /></div>
+            <div className="field"><label>Phone number ID</label><input className="input" name="phoneNumberId" defaultValue={state.whatsapp.phoneNumberId || ""} /></div>
             <div className="field"><label>Access token</label><input className="input" name="accessToken" placeholder={state.whatsapp.accessToken === "SET" ? "Token is saved" : "Paste Meta token"} /></div>
-            <div className="field"><label>Webhook verify token</label><input className="input" name="verifyToken" defaultValue={state.whatsapp.verifyToken} /></div>
+            <div className="field"><label>Webhook verify token</label><input className="input" name="verifyToken" defaultValue={state.whatsapp.verifyToken || ""} /></div>
             <div className="row">
               <button className="btn primary" disabled={busy === "settings"}>{busy === "settings" ? "Saving..." : "Save WhatsApp Settings"}</button>
               <button className="btn" type="button" disabled={busy === "wa-status"} onClick={checkWhatsAppStatus}>{busy === "wa-status" ? "Checking..." : "Check Status"}</button>
               <button className="btn" type="button" disabled={busy === "wa-start" || state.whatsapp.provider !== "personal"} onClick={startPersonalWhatsApp}>{busy === "wa-start" ? "Starting..." : "Start Personal QR"}</button>
             </div>
             {whatsAppStatus ? (
-              <div className={`notice ${whatsAppStatus.error ? "error" : "ok"}`} style={{ marginTop: 12 }}>
-                <b>{whatsAppStatus.provider}</b> · {whatsAppStatus.mode} · {whatsAppStatus.state}
-                {whatsAppStatus.accountPhone ? ` · +${whatsAppStatus.accountPhone}` : ""}
-                {whatsAppStatus.error ? `\n${whatsAppStatus.error}` : ""}
-                {whatsAppStatus.qrDataUrl ? <img src={whatsAppStatus.qrDataUrl} alt="WhatsApp QR" style={{ display: "block", width: 220, height: 220, marginTop: 12 }} /> : null}
+              <div className={`status-card ${whatsAppStatus.error ? "error" : "ok"}`} style={{ marginTop: 12 }}>
+                <span className="status-mark">{whatsAppStatus.error ? "!" : "OK"}</span>
+                <div>
+                  <b>{whatsAppStatus.provider} - {whatsAppStatus.mode} - {whatsAppStatus.state}</b>
+                  <p>{whatsAppStatus.accountPhone ? `+${whatsAppStatus.accountPhone}` : "No sender account detected."}{whatsAppStatus.error ? `\n${whatsAppStatus.error}` : ""}</p>
+                  {whatsAppStatus.qrDataUrl ? <img src={whatsAppStatus.qrDataUrl} alt="WhatsApp QR" style={{ display: "block", width: 220, height: 220, marginTop: 12 }} /> : null}
+                </div>
               </div>
             ) : null}
           </form>
+
+          <div className="panel panel-budget">
+            <div className="section-heading compact">
+              <div>
+                <h2>Budget Tracker</h2>
+                <p>Premium planning summary from the Stitch budget screen.</p>
+              </div>
+              <span className="pill yes">71% spent</span>
+            </div>
+            <div className="budget-hero">
+              <span>Total Budget</span>
+              <strong>$85,000.00</strong>
+              <small>Remaining $24,350.12</small>
+              <div className="budget-progress"><span /></div>
+            </div>
+            <div className="budget-grid">
+              <div className="donut" aria-label="Budget distribution">
+                <span>Total<br /><b>32 Items</b></span>
+              </div>
+              <div className="legend">
+                <p><i className="dot blue" />Venue (45%)</p>
+                <p><i className="dot slate" />Catering (25%)</p>
+                <p><i className="dot gray" />Florist (15%)</p>
+              </div>
+            </div>
+          </div>
+
           <div className="panel panel-send">
             <div className="section-heading compact">
               <div>

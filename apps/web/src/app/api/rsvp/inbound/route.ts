@@ -1,5 +1,5 @@
 import { applyInboundRsvp } from "@/lib/rsvp-inbound";
-import { loadState, saveState } from "@/lib/store";
+import { loadState, saveStateStrict } from "@/lib/store";
 import type { AppState } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -24,6 +24,6 @@ export async function POST(request: Request) {
 
   const input = await request.json().catch(() => ({})) as { phone?: string; text?: string };
   const result = applyInboundRsvp(state, String(input.phone || ""), String(input.text || ""));
-  if (result.updated) await saveState(state);
+  if (result.updated) await saveStateStrict(state);
   return Response.json({ ok: true, ...result });
 }

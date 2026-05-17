@@ -47,17 +47,28 @@ function bridgeHeaders(settings: WhatsAppSettings) {
   return headers;
 }
 
+function localBridgeUrl(settings: WhatsAppSettings) {
+  return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(settings.personalBridgeUrl.trim());
+}
+
 async function bridgeRequest<T>(settings: WhatsAppSettings, pathName: string, init?: RequestInit): Promise<T> {
   const base = settings.personalBridgeUrl.trim().replace(/\/$/, "");
   if (!base) throw new Error("Personal WhatsApp bridge URL is not configured.");
-  const response = await fetch(`${base}${pathName}`, {
-    ...init,
-    headers: { ...bridgeHeaders(settings), ...(init?.headers || {}) },
-    cache: "no-store",
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || `Personal WhatsApp bridge failed: ${response.status}`);
-  return data as T;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+  try {
+    const response = await fetch(`${base}${pathName}`, {
+      ...init,
+      headers: { ...bridgeHeaders(settings), ...(init?.headers || {}) },
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `Personal WhatsApp bridge failed: ${response.status}`);
+    return data as T;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function normalizeBridgeStatus(data: Partial<WhatsAppStatus> & { personal?: Partial<WhatsAppStatus> }, configured: boolean): WhatsAppStatus {
@@ -77,8 +88,21 @@ function normalizeBridgeStatus(data: Partial<WhatsAppStatus> & { personal?: Part
 
 export async function personalStatus(settings: WhatsAppSettings): Promise<WhatsAppStatus> {
   if (settings.personalBridgeUrl.trim()) {
-    const data = await bridgeRequest<Partial<WhatsAppStatus> & { personal?: Partial<WhatsAppStatus> }>(settings, "/api/whatsapp/status");
-    return normalizeBridgeStatus(data, true);
+    try {
+      const data = await bridgeRequest<Partial<WhatsAppStatus> & { personal?: Partial<WhatsAppStatus> }>(settings, "/api/whatsapp/status");
+      return normalizeBridgeStatus(data, true);
+    } catch (error) {
+      if (!process.env.VERCEL && localBridgeUrl(settings)) {
+        const status = asStatus(localRef());
+        const bridgeError = error instanceof Error ? error.message : "";
+        const localError = status.error ? ` Local session: ${status.error}` : "";
+        return {
+          ...status,
+          error: `Local bridge unavailable; using in-app local WhatsApp session. ${bridgeError}.${localError}`.trim(),
+        };
+      }
+      throw error;
+    }
   }
   if (process.env.VERCEL) {
     return {
@@ -98,8 +122,12 @@ export async function personalStatus(settings: WhatsAppSettings): Promise<WhatsA
 
 export async function startPersonal(settings: WhatsAppSettings): Promise<WhatsAppStatus> {
   if (settings.personalBridgeUrl.trim()) {
-    const data = await bridgeRequest<Partial<WhatsAppStatus> & { personal?: Partial<WhatsAppStatus> }>(settings, "/api/whatsapp/start", { method: "POST" });
-    return normalizeBridgeStatus(data, true);
+    try {
+      const data = await bridgeRequest<Partial<WhatsAppStatus> & { personal?: Partial<WhatsAppStatus> }>(settings, "/api/whatsapp/start", { method: "POST" });
+      return normalizeBridgeStatus(data, true);
+    } catch (error) {
+      if (process.env.VERCEL || !localBridgeUrl(settings)) throw error;
+    }
   }
   if (process.env.VERCEL) {
     throw new Error("Personal WhatsApp requires a persistent bridge URL on Vercel.");

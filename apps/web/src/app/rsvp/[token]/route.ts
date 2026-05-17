@@ -1,5 +1,5 @@
 import { setRsvp } from "@/lib/domain";
-import { loadState, saveState } from "@/lib/store";
+import { loadState, saveStateStrict } from "@/lib/store";
 import type { RsvpResponse } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -18,7 +18,7 @@ export async function GET(request: Request, context: { params: Promise<{ token: 
   if (!message) return new Response("<h1>RSVP not found</h1>", { status: 404, headers: { "Content-Type": "text/html; charset=utf-8" } });
   if (response) {
     setRsvp(state, token, response);
-    await saveState(state);
+    await saveStateStrict(state);
   }
   const contact = state.campaign.contacts.find((item) => item.id === message.contactId);
   const status = response || message.rsvp || "Pending";

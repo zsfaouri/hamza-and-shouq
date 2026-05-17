@@ -1,7 +1,7 @@
 import { requireAuth } from "@/lib/auth";
 import { rebuildMessages } from "@/lib/domain";
 import { readGoogleSheetPreview } from "@/lib/sheets";
-import { loadState, saveState } from "@/lib/store";
+import { loadState, saveStateStrict } from "@/lib/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     state.campaign.selectedTabs = selectedTabs;
     state.campaign.contacts = preview.contacts;
     rebuildMessages(state.campaign, state.template);
-    await saveState(state);
+    await saveStateStrict(state);
     return Response.json({ imported: preview.contacts.length, tabs: preview.tabs });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Google Sheet import failed." }, { status: 400 });

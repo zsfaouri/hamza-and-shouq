@@ -40,9 +40,14 @@ function normalizeState(input: Partial<AppState> | null | undefined): AppState {
   const templates = (input?.templates?.length ? input.templates : [legacyTemplate]).map((template) => ({
     ...base.template,
     ...template,
-    mediaName: template.mediaName || "",
-    mediaMimeType: template.mediaMimeType || "",
-    mediaData: template.mediaData || "",
+    id: String(template.id || crypto.randomUUID()),
+    name: String(template.name || base.template.name),
+    body: String(template.body || base.template.body),
+    mediaUrl: String(template.mediaUrl || ""),
+    mediaName: String(template.mediaName || ""),
+    mediaMimeType: String(template.mediaMimeType || ""),
+    mediaData: String(template.mediaData || ""),
+    updatedAt: String(template.updatedAt || base.template.updatedAt),
   }));
   const activeTemplateId = templates.some((template) => template.id === input?.activeTemplateId)
     ? String(input?.activeTemplateId)
@@ -59,6 +64,14 @@ function normalizeState(input: Partial<AppState> | null | undefined): AppState {
     activeTemplateId: active.id,
     whatsapp: { ...base.whatsapp, ...(input?.whatsapp || {}) },
   };
+  merged.campaign.sheetUrl = String(merged.campaign.sheetUrl || "");
+  merged.whatsapp.graphVersion = String(merged.whatsapp.graphVersion || "v23.0");
+  merged.whatsapp.phoneNumberId = String(merged.whatsapp.phoneNumberId || "");
+  merged.whatsapp.accessToken = String(merged.whatsapp.accessToken || "");
+  merged.whatsapp.verifyToken = String(merged.whatsapp.verifyToken || "hamza-shouq-webhook");
+  merged.whatsapp.senderPhone = String(merged.whatsapp.senderPhone || "");
+  merged.whatsapp.personalBridgeUrl = String(merged.whatsapp.personalBridgeUrl || "");
+  merged.whatsapp.personalBridgeToken = String(merged.whatsapp.personalBridgeToken || "");
   const metaConfigured = Boolean(merged.whatsapp.phoneNumberId && merged.whatsapp.accessToken && merged.whatsapp.accessToken !== "SET");
   merged.whatsapp.provider = merged.whatsapp.provider === "personal" || !metaConfigured ? "personal" : "meta";
   merged.whatsapp.personalBridgeUrl ||= process.env.PERSONAL_WHATSAPP_API_URL || "";
@@ -137,8 +150,16 @@ export async function saveState(state: AppState) {
   }
 }
 
+export async function saveStateStrict(state: AppState) {
+  const persisted = await saveState(state);
+  if (!persisted && process.env.VERCEL) {
+    throw new Error("Persistent storage write failed. Check Supabase env vars and public.hs_app_state.");
+  }
+  return persisted;
+}
+
 export function publicState(state: AppState) {
-  return {
+  const publicRecord = {
     ...state,
     template: {
       ...state.template,
@@ -153,12 +174,28 @@ export function publicState(state: AppState) {
       accessToken: state.whatsapp.accessToken ? "SET" : "",
       personalBridgeToken: state.whatsapp.personalBridgeToken ? "SET" : "",
     },
-  };
+  } as AppState & Record<string, unknown>;
+  delete publicRecord.accessUsers;
+  delete publicRecord.settings;
+  delete publicRecord.personalWhatsApp;
+  return publicRecord;
 }
 
 export async function storageDiagnostics() {
   const config = supabaseConfig();
-  if (!config) return { configured: false, selectOk: false, writeOk: false, error: "Supabase env is not configured." };
+  if (!config) {
+    if (process.env.VERCEL) {
+      return { configured: false, selectOk: false, writeOk: false, error: "Supabase env is not configured. Vercel needs persistent storage." };
+    }
+    try {
+      await mkdir(path.dirname(localFile), { recursive: true });
+      const state = await loadState();
+      await writeFile(localFile, JSON.stringify(state, null, 2));
+      return { configured: true, keyKind: "local-file", selectOk: true, writeOk: true, error: "" };
+    } catch (error) {
+      return { configured: false, keyKind: "local-file", selectOk: false, writeOk: false, error: error instanceof Error ? error.message : "Local storage failed." };
+    }
+  }
   const headers = supabaseHeaders(config.key);
   const out = { configured: true, keyKind: config.key.startsWith("eyJ") ? "jwt" : "publishable-or-secret", selectOk: false, writeOk: false, error: "" };
   try {

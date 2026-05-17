@@ -1,5 +1,5 @@
 import { applyInboundRsvp } from "@/lib/rsvp-inbound";
-import { loadState, saveState } from "@/lib/store";
+import { loadState, saveStateStrict } from "@/lib/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,6 +29,6 @@ export async function POST(request: Request) {
       }
     }
   }
-  if (changed) await saveState(state);
+  if (changed) await saveStateStrict(state);
   return Response.json({ ok: true });
 }

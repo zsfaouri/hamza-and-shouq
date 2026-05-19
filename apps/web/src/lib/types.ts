@@ -59,7 +59,7 @@ export type WhatsAppSettings = {
 };
 
 export type WhatsAppStatus = {
-  provider: "meta" | "personal";
+  provider: "meta" | "personal" | "openwa";
   configured: boolean;
   state: string;
   qr: string;

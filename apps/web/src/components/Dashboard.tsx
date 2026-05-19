@@ -660,12 +660,12 @@ export default function Dashboard() {
                             }}
                           />
                         </td>
-                        <td style={{ direction: "auto", unicodeBidi: "plaintext" }}>{contact?.name || ""}</td>
+                        <td dir="auto">{contact?.name || ""}</td>
                         <td dir="ltr">{contact?.phone || ""}</td>
                         <td>{contact?.sourceTab || ""}</td>
                         <td><span className={`pill ${message.status === "FAILED" ? "warn" : ""}`}>{message.status}</span></td>
                         <td><span className={`pill ${message.rsvp === "YES" ? "yes" : message.rsvp === "NO" ? "no" : ""}`}>{message.rsvp || "Pending"}</span></td>
-                        <td style={{ direction: "auto", unicodeBidi: "plaintext", maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis" }}>{message.body.slice(0, 180)}</td>
+                        <td dir="auto" style={{ maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis" }}>{message.body.slice(0, 180)}</td>
                         <td>
                           <a href={waLink} target="_blank" rel="noopener noreferrer" className="btn btn-sm" style={{ background: "#25D366", color: "#fff", padding: "4px 12px", borderRadius: 6, fontSize: 13, textDecoration: "none", whiteSpace: "nowrap" }}>
                             WhatsApp

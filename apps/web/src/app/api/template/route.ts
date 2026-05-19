@@ -43,7 +43,7 @@ export async function POST(request: Request) {
       mediaName: keepUploadedMedia ? current.mediaName : "",
       mediaMimeType: keepUploadedMedia ? current.mediaMimeType : "",
       mediaData: keepUploadedMedia ? current.mediaData : "",
-      includeRsvpLinks: true,
+      includeRsvpLinks: false,
       updatedAt: current.updatedAt,
     }, true);
     rebuildMessages(state.campaign, saved);

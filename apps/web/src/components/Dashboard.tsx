@@ -215,7 +215,7 @@ export default function Dashboard() {
     try {
       const result = await api<{ sent: number; failed: number }>("/api/campaign/send", {
         method: "POST",
-        body: JSON.stringify({ messageIds: [...selectedMessages], confirmText: sendConfirm }),
+        body: JSON.stringify({ messageIds: [...selectedMessages] }),
       });
       await refresh();
       setSelectedMessages(new Set());
@@ -473,6 +473,7 @@ export default function Dashboard() {
             <div className="variable-row" aria-label="Template variables">
               <button className="variable-pill" type="button" onClick={() => setTemplateBody(`${templateBody} {{name}}`)}>+ Guest Name</button>
               <button className="variable-pill" type="button" onClick={() => setTemplateBody(`${templateBody} {{attending_link}}`)}>+ RSVP</button>
+              <button className="variable-pill" type="button" onClick={() => setTemplateBody(`${templateBody}\n{{invitation_image}}`)}>+ Image Link</button>
               <button className="variable-pill" type="button" onClick={() => setTemplateBody(`${templateBody} {{source_tab}}`)}>+ Source</button>
             </div>
             <div className="field">
@@ -566,10 +567,9 @@ export default function Dashboard() {
                 <p>Checked rows only. Confirmation stays explicit.</p>
               </div>
             </div>
-            <p className="notice">Sending requires checked rows and exact confirmation text: SEND SELECTED</p>
+            <p className="notice">Select rows below, then click Send.</p>
             <div className="row">
-              <input className="input" style={{ maxWidth: 260 }} value={sendConfirm} onChange={(event) => setSendConfirm(event.target.value)} placeholder="SEND SELECTED" />
-              <button className="btn danger" disabled={!selectedMessages.size || sendConfirm !== "SEND SELECTED" || busy === "send"} onClick={sendSelected}>
+              <button className="btn danger" disabled={!selectedMessages.size || busy === "send"} onClick={sendSelected}>
                 {busy === "send" ? "Sending..." : `Send ${selectedMessages.size} Selected`}
               </button>
             </div>
@@ -593,11 +593,14 @@ export default function Dashboard() {
                     <th>Status</th>
                     <th>RSVP</th>
                     <th>Message preview</th>
+                    <th>Send</th>
                   </tr>
                 </thead>
                 <tbody>
                   {state.campaign.messages.map((message) => {
                     const contact = state.campaign.contacts.find((item) => item.id === message.contactId);
+                    const phone = (contact?.phone || "").replace(/[^\d]/g, "");
+                    const waLink = `https://wa.me/${phone}?text=${encodeURIComponent(message.body)}`;
                     return (
                       <tr key={message.id}>
                         <td>
@@ -619,6 +622,11 @@ export default function Dashboard() {
                         <td><span className={`pill ${message.status === "FAILED" ? "warn" : ""}`}>{message.status}</span></td>
                         <td><span className={`pill ${message.rsvp === "YES" ? "yes" : message.rsvp === "NO" ? "no" : ""}`}>{message.rsvp || "Pending"}</span></td>
                         <td>{message.body.slice(0, 180)}</td>
+                        <td>
+                          <a href={waLink} target="_blank" rel="noopener noreferrer" className="btn btn-sm" style={{ background: "#25D366", color: "#fff", padding: "4px 12px", borderRadius: 6, fontSize: 13, textDecoration: "none", whiteSpace: "nowrap" }}>
+                            WhatsApp
+                          </a>
+                        </td>
                       </tr>
                     );
                   })}

@@ -1,7 +1,7 @@
 import { requireAuth } from "@/lib/auth";
-import { nowIso } from "@/lib/domain";
+import { activeTemplate, nowIso } from "@/lib/domain";
 import { loadState, saveStateStrict } from "@/lib/store";
-import { sendWhatsAppText, whatsappConfigured } from "@/lib/whatsapp";
+import { sendWhatsAppText, whatsappConfigured, type MediaAttachment } from "@/lib/whatsapp";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,13 +12,26 @@ export async function POST(request: Request) {
   try {
     const input = await request.json().catch(() => ({})) as { messageIds?: string[]; confirmText?: string };
     const messageIds = Array.isArray(input.messageIds) ? input.messageIds.map(String) : [];
-    if (input.confirmText !== "SEND SELECTED") return Response.json({ error: "Type SEND SELECTED before sending." }, { status: 400 });
     if (!messageIds.length) return Response.json({ error: "Select at least one message." }, { status: 400 });
 
     const state = await loadState();
     if (!whatsappConfigured(state.whatsapp)) {
       return Response.json({ error: "WhatsApp is not configured for the selected provider." }, { status: 400 });
     }
+
+    // Build media attachment from the active template's stored data
+    const template = activeTemplate(state);
+    const media: MediaAttachment | undefined = template.mediaData
+      ? {
+          mediaUrl: template.mediaUrl,
+          mediaData: template.mediaData,
+          mediaMimeType: template.mediaMimeType,
+          mediaName: template.mediaName,
+        }
+      : template.mediaUrl
+        ? { mediaUrl: template.mediaUrl }
+        : undefined;
+
     let sent = 0;
     let failed = 0;
     for (const id of messageIds) {
@@ -27,7 +40,7 @@ export async function POST(request: Request) {
       const contact = state.campaign.contacts.find((item) => item.id === message.contactId);
       if (!contact) continue;
       try {
-        message.providerMessageId = await sendWhatsAppText(state.whatsapp, contact.phone, message.body, state.template.mediaUrl);
+        message.providerMessageId = await sendWhatsAppText(state.whatsapp, contact.phone, message.body, media);
         message.status = "SENT";
         message.error = "";
         message.sentAt = nowIso();

@@ -239,6 +239,10 @@ async function startClient() {
       dataPath: sessionPath,
     }),
     puppeteer: puppeteerOptions(),
+    webVersionCache: {
+      type: "remote",
+      remotePath: "https://raw.githubusercontent.com/nicenathapong/whatsapp-web-versions/main/cache/chrome/latest.html",
+    },
   });
   client = nextClient;
   attachClientEvents(nextClient);
@@ -265,7 +269,22 @@ const sendSchema = z.object({
   phone: z.string().min(7),
   message: z.string().min(1),
   mediaUrl: z.string().url().optional().or(z.literal("")),
+  mediaData: z.string().optional(),
+  mediaMimeType: z.string().optional(),
+  mediaName: z.string().optional(),
 });
+
+async function resolveMedia(input: z.infer<typeof sendSchema>): Promise<InstanceType<typeof MessageMedia> | null> {
+  // Prefer inline base64 data (no network fetch needed)
+  if (input.mediaData && input.mediaMimeType) {
+    return new MessageMedia(input.mediaMimeType, input.mediaData, input.mediaName || "media");
+  }
+  // Fall back to URL fetch
+  if (input.mediaUrl) {
+    return MessageMedia.fromUrl(input.mediaUrl);
+  }
+  return null;
+}
 
 async function sendMessage(req: Request, res: Response) {
   if (state.state !== "ready" || !client) {
@@ -275,8 +294,9 @@ async function sendMessage(req: Request, res: Response) {
 
   const input = sendSchema.parse(req.body);
   const chatId = `${input.phone.replace(/[^\d]/g, "")}@c.us`;
-  const result = input.mediaUrl
-    ? await client.sendMessage(chatId, await MessageMedia.fromUrl(input.mediaUrl), { caption: input.message }) as SendResult
+  const media = await resolveMedia(input);
+  const result = media
+    ? await client.sendMessage(chatId, media, { caption: input.message }) as SendResult
     : await client.sendMessage(chatId, input.message) as SendResult;
   const id = typeof result.id === "string" ? result.id : result.id?._serialized || "";
   res.json({ ok: true, id });

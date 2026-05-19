@@ -21,6 +21,7 @@ const yesPhrases = [
 
 const noPhrases = [
   "0",
+  "2",
   "n",
   "no",
   "not attending",

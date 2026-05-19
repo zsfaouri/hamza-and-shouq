@@ -6,21 +6,43 @@ export function nowIso() {
 
 export function siteUrl() {
   if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, "");
-  if (process.env.VERCEL) return "https://web-zsfaouris-projects.vercel.app";
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
-  return "http://localhost:3000";
+  return "https://www.hamzaandshouq.com";
 }
 
 export function defaultTemplate(): Template {
   return {
     id: "template-main",
     name: "Wedding invitation",
-    body: "Hi {{name}}, you are invited to Hamza and Shouq's wedding.\n\nAttending: {{attending_link}}\nNot attending: {{not_attending_link}}",
+    body: `بسم الله الرحمن الرحيم
+
+*دعوة زفاف* 🎉
+
+السلام عليكم {{name}}،
+
+يسعدنا دعوتكم لحضور حفل زفاف
+
+*حمزة و شوق*
+
+نتشرف بحضوركم ومشاركتنا فرحتنا.
+
+━━━━━━━━━━━━━━━
+
+✅ *للتأكيد:* {{attending_link}}
+
+❌ *للاعتذار:* {{not_attending_link}}
+
+أو أرسل رداً:
+▪️ اكتب *1* أو *حاضر* للتأكيد
+▪️ اكتب *2* أو *معتذر* للاعتذار
+
+━━━━━━━━━━━━━━━
+
+_بانتظاركم بإذن الله_ 🤍`,
     mediaUrl: "",
     mediaName: "",
     mediaMimeType: "",
     mediaData: "",
-    includeRsvpLinks: true,
+    includeRsvpLinks: false,
     updatedAt: nowIso(),
   };
 }
@@ -120,11 +142,13 @@ function value(contact: Contact, key: string) {
 }
 
 export function renderBody(template: Template, contact: Contact, token: string) {
-  const base = `${siteUrl()}/rsvp/${encodeURIComponent(token)}`;
+  const site = siteUrl();
+  const base = `${site}/rsvp/${encodeURIComponent(token)}`;
   const values: Record<string, string> = {
     attending_link: `${base}?response=YES`,
     not_attending_link: `${base}?response=NO`,
     rsvp_link: base,
+    invitation_image: template.mediaData ? `${site}/invitation` : "",
   };
   const rendered = template.body.replace(/\{\{\s*([\w.-]+)\s*\}\}/g, (_match, key: string) => {
     return values[key] || value(contact, key);

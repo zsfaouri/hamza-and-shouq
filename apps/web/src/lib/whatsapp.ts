@@ -1,6 +1,8 @@
 import { normalizePhone } from "./sheets";
-import { personalStatus, sendPersonal } from "./personal-whatsapp";
+import { personalStatus, sendPersonal, type MediaAttachment } from "./personal-whatsapp";
 import type { WhatsAppSettings, WhatsAppStatus } from "./types";
+
+export type { MediaAttachment } from "./personal-whatsapp";
 
 export function whatsappConfigured(settings: WhatsAppSettings) {
   if (settings.provider === "personal") return Boolean(settings.personalBridgeUrl.trim()) || !process.env.VERCEL;
@@ -22,24 +24,58 @@ export async function whatsappStatus(settings: WhatsAppSettings): Promise<WhatsA
   };
 }
 
-export async function sendWhatsAppText(settings: WhatsAppSettings, to: string, body: string, mediaUrl?: string) {
-  if (settings.provider === "personal") return sendPersonal(settings, normalizePhone(to), body, mediaUrl);
+async function uploadMediaToMeta(settings: WhatsAppSettings, mediaData: string, mediaMimeType: string, mediaName: string): Promise<string> {
+  const buffer = Buffer.from(mediaData, "base64");
+  const blob = new Blob([buffer], { type: mediaMimeType });
+  const form = new FormData();
+  form.append("messaging_product", "whatsapp");
+  form.append("type", mediaMimeType);
+  form.append("file", blob, mediaName || "media");
+
+  const response = await fetch(`https://graph.facebook.com/${settings.graphVersion}/${settings.phoneNumberId}/media`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${settings.accessToken}` },
+    body: form,
+  });
+  const data = await response.json().catch(() => ({})) as { id?: string; error?: { message?: string } };
+  if (!response.ok) throw new Error(data.error?.message || `Meta media upload failed: ${response.status}`);
+  return data.id || "";
+}
+
+export async function sendWhatsAppText(settings: WhatsAppSettings, to: string, body: string, media?: MediaAttachment) {
+  if (settings.provider === "personal") return sendPersonal(settings, normalizePhone(to), body, media);
   if (!whatsappConfigured(settings)) throw new Error("WhatsApp Cloud API is not configured.");
-  const payload = mediaUrl
-    ? {
-        messaging_product: "whatsapp",
-        recipient_type: "individual",
-        to: normalizePhone(to),
-        type: "image",
-        image: { link: mediaUrl, caption: body },
-      }
-    : {
-        messaging_product: "whatsapp",
-        recipient_type: "individual",
-        to: normalizePhone(to),
-        type: "text",
-        text: { preview_url: true, body },
-      };
+
+  const hasMedia = Boolean(media?.mediaData || media?.mediaUrl);
+  let payload: Record<string, unknown>;
+
+  if (hasMedia) {
+    // Prefer uploading base64 data directly to Meta (no need for public URL)
+    let mediaId = "";
+    if (media?.mediaData && media.mediaMimeType) {
+      mediaId = await uploadMediaToMeta(settings, media.mediaData, media.mediaMimeType, media.mediaName || "media");
+    }
+
+    const imagePayload = mediaId
+      ? { id: mediaId, caption: body }
+      : { link: media?.mediaUrl || "", caption: body };
+
+    payload = {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: normalizePhone(to),
+      type: "image",
+      image: imagePayload,
+    };
+  } else {
+    payload = {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: normalizePhone(to),
+      type: "text",
+      text: { preview_url: true, body },
+    };
+  }
 
   const response = await fetch(`https://graph.facebook.com/${settings.graphVersion}/${settings.phoneNumberId}/messages`, {
     method: "POST",

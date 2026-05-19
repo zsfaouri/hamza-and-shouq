@@ -196,11 +196,25 @@ export async function startPersonal(settings: WhatsAppSettings): Promise<WhatsAp
   return asStatus(state);
 }
 
-export async function sendPersonal(settings: WhatsAppSettings, to: string, body: string, mediaUrl?: string) {
+export type MediaAttachment = {
+  mediaUrl?: string;
+  mediaData?: string;
+  mediaMimeType?: string;
+  mediaName?: string;
+};
+
+export async function sendPersonal(settings: WhatsAppSettings, to: string, body: string, media?: MediaAttachment) {
   if (settings.personalBridgeUrl.trim()) {
     const data = await bridgeRequest<{ id?: string }>(settings, "/api/whatsapp/send", {
       method: "POST",
-      body: JSON.stringify({ phone: to, message: body, mediaUrl }),
+      body: JSON.stringify({
+        phone: to,
+        message: body,
+        mediaUrl: media?.mediaUrl || "",
+        mediaData: media?.mediaData || "",
+        mediaMimeType: media?.mediaMimeType || "",
+        mediaName: media?.mediaName || "",
+      }),
     });
     return data.id || "";
   }
@@ -213,8 +227,16 @@ export async function sendPersonal(settings: WhatsAppSettings, to: string, body:
     sendMessage: (chatId: string, content: unknown, options?: { caption?: string }) => Promise<{ id?: { _serialized?: string } | string }>;
   };
   const chatId = `${to.replace(/[^\d]/g, "")}@c.us`;
-  const result = mediaUrl
-    ? await client.sendMessage(chatId, await MessageMedia.fromUrl(mediaUrl), { caption: body })
+
+  let resolvedMedia: unknown = null;
+  if (media?.mediaData && media.mediaMimeType) {
+    resolvedMedia = new MessageMedia(media.mediaMimeType, media.mediaData, media.mediaName || "media");
+  } else if (media?.mediaUrl) {
+    resolvedMedia = await MessageMedia.fromUrl(media.mediaUrl);
+  }
+
+  const result = resolvedMedia
+    ? await client.sendMessage(chatId, resolvedMedia, { caption: body })
     : await client.sendMessage(chatId, body);
   return typeof result.id === "string" ? result.id : result.id?._serialized || "";
 }

@@ -82,9 +82,11 @@ function normalizeState(input: Partial<AppState> | null | undefined): AppState {
   return merged;
 }
 
-export async function loadState(): Promise<AppState> {
-  const memory = memoryRef().__hsState;
-  if (memory) return normalizeState(memory);
+export async function loadState(options?: { fresh?: boolean }): Promise<AppState> {
+  if (!options?.fresh) {
+    const memory = memoryRef().__hsState;
+    if (memory) return normalizeState(memory);
+  }
 
   const config = supabaseConfig();
   if (config) {
@@ -100,9 +102,12 @@ export async function loadState(): Promise<AppState> {
           memoryRef().__hsState = state;
           return state;
         }
+      } else {
+        const errorText = await response.text().catch(() => "");
+        console.error(`[store] Supabase read failed: ${storageError("loadState", response.status, errorText)}`);
       }
     } catch (error) {
-      void error;
+      console.error(`[store] Supabase connection failed:`, error instanceof Error ? error.message : error);
     }
   }
 
@@ -132,7 +137,11 @@ export async function saveState(state: AppState) {
       memoryRef().__hsState = state;
       return true;
     }
+    const errorText = await response.text().catch(() => "");
+    const detail = storageError("saveState", response.status, errorText);
+    console.error(`[store] Supabase write failed: ${detail}`);
     if (process.env.VERCEL) {
+      // Still cache in memory so current request chain works, but flag failure
       memoryRef().__hsState = state;
       return false;
     }
@@ -143,8 +152,9 @@ export async function saveState(state: AppState) {
     await writeFile(localFile, JSON.stringify(state, null, 2));
     memoryRef().__hsState = state;
     return true;
-  } catch {
-    if (process.env.VERCEL) throw new Error("Persistent storage is not configured.");
+  } catch (err) {
+    if (process.env.VERCEL) throw new Error("Persistent storage is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.");
+    console.error(`[store] Local file write failed:`, err);
     memoryRef().__hsState = state;
     return false;
   }
@@ -218,3 +228,4 @@ export async function storageDiagnostics() {
   }
   return out;
 }
+

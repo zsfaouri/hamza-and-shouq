@@ -1,15 +1,18 @@
 import { normalizePhone } from "./sheets";
 import { personalStatus, sendPersonal, type MediaAttachment } from "./personal-whatsapp";
+import { openwaConfigured, openwaStatus, sendOpenwa } from "./openwa";
 import type { WhatsAppSettings, WhatsAppStatus } from "./types";
 
 export type { MediaAttachment } from "./personal-whatsapp";
 
 export function whatsappConfigured(settings: WhatsAppSettings) {
+  if (settings.provider === "openwa") return openwaConfigured(settings);
   if (settings.provider === "personal") return Boolean(settings.personalBridgeUrl.trim()) || !process.env.VERCEL;
   return Boolean(settings.phoneNumberId && settings.accessToken);
 }
 
 export async function whatsappStatus(settings: WhatsAppSettings): Promise<WhatsAppStatus> {
+  if (settings.provider === "openwa") return openwaStatus(settings);
   if (settings.provider === "personal") return personalStatus(settings);
   return {
     provider: "meta",
@@ -43,6 +46,7 @@ async function uploadMediaToMeta(settings: WhatsAppSettings, mediaData: string, 
 }
 
 export async function sendWhatsAppText(settings: WhatsAppSettings, to: string, body: string, media?: MediaAttachment) {
+  if (settings.provider === "openwa") return sendOpenwa(settings, normalizePhone(to), body, media);
   if (settings.provider === "personal") return sendPersonal(settings, normalizePhone(to), body, media);
   if (!whatsappConfigured(settings)) throw new Error("WhatsApp Cloud API is not configured.");
 
@@ -50,7 +54,6 @@ export async function sendWhatsAppText(settings: WhatsAppSettings, to: string, b
   let payload: Record<string, unknown>;
 
   if (hasMedia) {
-    // Prefer uploading base64 data directly to Meta (no need for public URL)
     let mediaId = "";
     if (media?.mediaData && media.mediaMimeType) {
       mediaId = await uploadMediaToMeta(settings, media.mediaData, media.mediaMimeType, media.mediaName || "media");

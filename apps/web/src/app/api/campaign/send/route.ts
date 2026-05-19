@@ -32,13 +32,23 @@ export async function POST(request: Request) {
         ? { mediaUrl: template.mediaUrl }
         : undefined;
 
+    // Throttle delay for OpenWA/personal to avoid WhatsApp anti-spam (3s between messages)
+    const throttleMs = state.whatsapp.provider === "meta" ? 200 : 3000;
+    const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
     let sent = 0;
     let failed = 0;
+    let isFirst = true;
     for (const id of messageIds) {
       const message = state.campaign.messages.find((item) => item.id === id);
       if (!message || message.status === "SENT") continue;
       const contact = state.campaign.contacts.find((item) => item.id === message.contactId);
       if (!contact) continue;
+
+      // Throttle between messages (skip delay for the first one)
+      if (!isFirst) await sleep(throttleMs);
+      isFirst = false;
+
       try {
         message.providerMessageId = await sendWhatsAppText(state.whatsapp, contact.phone, message.body, media);
         message.status = "SENT";
@@ -49,6 +59,11 @@ export async function POST(request: Request) {
         message.status = "FAILED";
         message.error = error instanceof Error ? error.message : "Send failed.";
         failed += 1;
+      }
+
+      // Save progress every 10 messages so we don't lose state on timeout
+      if ((sent + failed) % 10 === 0) {
+        await saveStateStrict(state).catch(() => {});
       }
     }
     await saveStateStrict(state);

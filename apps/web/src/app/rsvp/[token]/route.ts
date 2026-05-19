@@ -18,11 +18,13 @@ export async function GET(request: Request, context: { params: Promise<{ token: 
   const contact = state.campaign.contacts.find((item) => item.id === message.contactId);
   const guestName = contact?.name || "Guest";
   const currentRsvp = message.rsvp || "";
-  const origin = new URL(request.url).origin;
+  const requestUrl = new URL(request.url);
+  const origin = requestUrl.origin;
+  const autoResponse = requestUrl.searchParams.get("response")?.toUpperCase() || "";
   const hasMedia = state.templates?.some((t) => t.mediaData && t.mediaMimeType);
   const ogImage = hasMedia ? `${origin}/api/media/invitation` : "";
 
-  return new Response(landingPage({ token, guestName, currentRsvp, ogImage }), {
+  return new Response(landingPage({ token, guestName, currentRsvp, ogImage, autoResponse }), {
     headers: { "Content-Type": "text/html; charset=utf-8" },
   });
 }
@@ -36,8 +38,8 @@ function notFoundPage() {
 </head><body><div class="card"><h1>Link not found</h1><p>Sorry, this invitation link is not valid.</p></div></body></html>`;
 }
 
-function landingPage(data: { token: string; guestName: string; currentRsvp: string; ogImage: string }) {
-  const { token, guestName, currentRsvp, ogImage } = data;
+function landingPage(data: { token: string; guestName: string; currentRsvp: string; ogImage: string; autoResponse: string }) {
+  const { token, guestName, currentRsvp, ogImage, autoResponse } = data;
   const escapedName = guestName.replace(/</g, "&lt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
   return `<!doctype html>
@@ -318,11 +320,13 @@ fetch("/api/rsvp/respond",{method:"POST",headers:{"Content-Type":"application/js
 .then(function(){
   y.classList.toggle("active",r==="YES");n.classList.toggle("active",r==="NO");
   var b=document.getElementById("rsvp-badge");b.style.display="";
-  b.innerHTML=r==="YES"?'<span class="badge y">&#10003; Attending — See you there!</span>':'<span class="badge n">&#10007; We\\'ll miss you!</span>';
+  b.innerHTML=r==="YES"?'<span class="badge y">&#10003; Attending — See you there!</span>':'<span class="badge n">&#10007; We will miss you!</span>';
   document.getElementById("prompt").textContent="Change your response:";
-  toast(r==="YES"?"We can\\'t wait to see you! \\uD83C\\uDF89":"We\\'ll miss you \\u2764\\uFE0F")
+  toast(r==="YES"?"We can't wait to see you! 🎉":"We'll miss you ❤️")
 }).catch(function(){toast("Something went wrong. Try again.")})
 .finally(function(){y.disabled=n.disabled=false;busy=0})}
+var autoR=${JSON.stringify(autoResponse)};
+if(autoR==="YES"||autoR==="NO"){setTimeout(function(){rsvp(autoR)},600)}
 </script>
 </body></html>`;
 }

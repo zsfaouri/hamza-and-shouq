@@ -46,7 +46,7 @@ export type Campaign = {
 };
 
 export type WhatsAppSettings = {
-  provider: "meta" | "personal";
+  provider: "meta" | "personal" | "openwa";
   graphVersion: string;
   phoneNumberId: string;
   accessToken: string;
@@ -54,6 +54,8 @@ export type WhatsAppSettings = {
   senderPhone: string;
   personalBridgeUrl: string;
   personalBridgeToken: string;
+  openwaApiUrl: string;
+  openwaApiKey: string;
 };
 
 export type WhatsAppStatus = {

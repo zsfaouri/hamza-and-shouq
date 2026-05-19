@@ -76,10 +76,16 @@ export function defaultCampaign(): Campaign {
 
 export function defaultState(): AppState {
   const metaConfigured = Boolean(process.env.META_PHONE_NUMBER_ID && process.env.META_ACCESS_TOKEN);
-  const requestedProvider = process.env.WHATSAPP_PROVIDER === "meta" || process.env.WHATSAPP_PROVIDER === "personal"
-    ? process.env.WHATSAPP_PROVIDER
-    : "personal";
+  const openwaConfigured = Boolean(process.env.OPENWA_API_URL);
+  const requestedProvider = (process.env.WHATSAPP_PROVIDER as "meta" | "personal" | "openwa") || "openwa";
   const template = defaultTemplate();
+
+  let provider: "meta" | "personal" | "openwa" = "openwa";
+  if (requestedProvider === "meta" && metaConfigured) provider = "meta";
+  else if (requestedProvider === "personal") provider = "personal";
+  else if (requestedProvider === "openwa" && openwaConfigured) provider = "openwa";
+  else if (!openwaConfigured && !metaConfigured) provider = "openwa"; // default, will show setup prompt
+
   return {
     version: 1,
     campaign: defaultCampaign(),
@@ -87,7 +93,7 @@ export function defaultState(): AppState {
     templates: [template],
     activeTemplateId: template.id,
     whatsapp: {
-      provider: requestedProvider === "meta" && metaConfigured ? "meta" : "personal",
+      provider,
       graphVersion: process.env.META_GRAPH_VERSION || "v23.0",
       phoneNumberId: process.env.META_PHONE_NUMBER_ID || "",
       accessToken: process.env.META_ACCESS_TOKEN || "",
@@ -95,6 +101,8 @@ export function defaultState(): AppState {
       senderPhone: process.env.WHATSAPP_SENDER_PHONE || "962795941263",
       personalBridgeUrl: process.env.PERSONAL_WHATSAPP_API_URL || "",
       personalBridgeToken: process.env.PERSONAL_WHATSAPP_TOKEN || "",
+      openwaApiUrl: process.env.OPENWA_API_URL || "",
+      openwaApiKey: process.env.OPENWA_API_KEY || "",
     },
   };
 }
@@ -152,8 +160,8 @@ export function renderBody(template: Template, contact: Contact, token: string) 
   const site = siteUrl();
   const base = `${site}?t=${encodeURIComponent(token)}`;
   const values: Record<string, string> = {
-    attending_link: `${base}?response=YES`,
-    not_attending_link: `${base}?response=NO`,
+    attending_link: `${base}&response=YES`,
+    not_attending_link: `${base}&response=NO`,
     rsvp_link: base,
     invitation_image: template.mediaData ? `${site}/invitation` : "",
   };

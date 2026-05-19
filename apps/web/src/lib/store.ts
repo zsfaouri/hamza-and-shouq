@@ -72,8 +72,14 @@ function normalizeState(input: Partial<AppState> | null | undefined): AppState {
   merged.whatsapp.senderPhone = String(merged.whatsapp.senderPhone || "");
   merged.whatsapp.personalBridgeUrl = String(merged.whatsapp.personalBridgeUrl || "");
   merged.whatsapp.personalBridgeToken = String(merged.whatsapp.personalBridgeToken || "");
-  const metaConfigured = Boolean(merged.whatsapp.phoneNumberId && merged.whatsapp.accessToken && merged.whatsapp.accessToken !== "SET");
-  merged.whatsapp.provider = merged.whatsapp.provider === "personal" || !metaConfigured ? "personal" : "meta";
+  merged.whatsapp.openwaApiUrl = String((merged.whatsapp as Record<string, unknown>).openwaApiUrl || process.env.OPENWA_API_URL || "");
+  merged.whatsapp.openwaApiKey = String((merged.whatsapp as Record<string, unknown>).openwaApiKey || process.env.OPENWA_API_KEY || "");
+  // Preserve the provider if it's a valid option
+  const validProviders = ["meta", "personal", "openwa"] as const;
+  if (!validProviders.includes(merged.whatsapp.provider as typeof validProviders[number])) {
+    const metaConfigured = Boolean(merged.whatsapp.phoneNumberId && merged.whatsapp.accessToken && merged.whatsapp.accessToken !== "SET");
+    merged.whatsapp.provider = metaConfigured ? "meta" : "openwa";
+  }
   merged.whatsapp.personalBridgeUrl ||= process.env.PERSONAL_WHATSAPP_API_URL || "";
   merged.whatsapp.personalBridgeToken ||= process.env.PERSONAL_WHATSAPP_TOKEN || "";
   merged.campaign.contacts ||= [];

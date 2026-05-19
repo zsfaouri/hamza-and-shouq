@@ -194,6 +194,8 @@ export default function Dashboard() {
           provider: form.get("provider"),
           personalBridgeUrl: form.get("personalBridgeUrl"),
           personalBridgeToken: form.get("personalBridgeToken"),
+          openwaApiUrl: form.get("openwaApiUrl"),
+          openwaApiKey: form.get("openwaApiKey"),
         }),
       });
       await refresh();
@@ -278,13 +280,13 @@ export default function Dashboard() {
       fields: {},
     };
     const token = state?.campaign.messages.find((message) => message.contactId === contact.id)?.token || "preview";
-    const base = typeof window === "undefined" ? "" : `${window.location.origin}/rsvp/${encodeURIComponent(token)}`;
+    const base = typeof window === "undefined" ? "" : `${window.location.origin}?t=${encodeURIComponent(token)}`;
     const values: Record<string, string> = {
       name: contact.name,
       phone: contact.phone,
       source_tab: contact.sourceTab,
-      attending_link: `${base}?response=YES`,
-      not_attending_link: `${base}?response=NO`,
+      attending_link: `${base}&response=YES`,
+      not_attending_link: `${base}&response=NO`,
       rsvp_link: base,
     };
     const rendered = templateBody.replace(/\{\{\s*([\w.-]+)\s*\}\}/g, (_match, key: string) => {
@@ -321,11 +323,13 @@ export default function Dashboard() {
     ? whatsAppStatus.error
       ? "Needs attention"
       : whatsAppStatus.state
-    : state.whatsapp.provider === "personal" && !state.whatsapp.personalBridgeUrl
-      ? "Local QR mode"
-      : state.whatsapp.provider === "personal"
-        ? "Bridge mode"
-        : "Cloud API";
+    : state.whatsapp.provider === "openwa"
+      ? "OpenWA"
+      : state.whatsapp.provider === "personal" && !state.whatsapp.personalBridgeUrl
+        ? "Local QR mode"
+        : state.whatsapp.provider === "personal"
+          ? "Bridge mode"
+          : "Cloud API";
 
   return (
     <main className="app-shell elysian-shell">
@@ -532,21 +536,38 @@ export default function Dashboard() {
             <div className="field">
               <label>Provider</label>
               <select className="input" name="provider" defaultValue={state.whatsapp.provider}>
-                <option value="personal">Personal WhatsApp</option>
+                <option value="openwa">OpenWA (Self-hosted API)</option>
+                <option value="personal">Personal WhatsApp Bridge</option>
                 <option value="meta">Meta WhatsApp Cloud API</option>
               </select>
             </div>
             <div className="field"><label>Sender phone</label><input className="input" name="senderPhone" defaultValue={state.whatsapp.senderPhone || ""} /></div>
-            <div className="field"><label>Personal bridge URL</label><input className="input" name="personalBridgeUrl" defaultValue={state.whatsapp.personalBridgeUrl || ""} placeholder="Optional persistent bridge URL" /></div>
-            <div className="field"><label>Personal bridge token</label><input className="input" name="personalBridgeToken" placeholder={state.whatsapp.personalBridgeToken === "SET" ? "Token is saved" : "Optional bridge token"} /></div>
-            <div className="field"><label>Graph version</label><input className="input" name="graphVersion" defaultValue={state.whatsapp.graphVersion || "v23.0"} /></div>
-            <div className="field"><label>Phone number ID</label><input className="input" name="phoneNumberId" defaultValue={state.whatsapp.phoneNumberId || ""} /></div>
-            <div className="field"><label>Access token</label><input className="input" name="accessToken" placeholder={state.whatsapp.accessToken === "SET" ? "Token is saved" : "Paste Meta token"} /></div>
-            <div className="field"><label>Webhook verify token</label><input className="input" name="verifyToken" defaultValue={state.whatsapp.verifyToken || ""} /></div>
-            <div className="row">
+
+            <details open={state.whatsapp.provider === "openwa"} style={{ marginTop: 8 }}>
+              <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: 13, color: "#4a654a", marginBottom: 8 }}>OpenWA Settings</summary>
+              <div className="field"><label>OpenWA API URL</label><input className="input" name="openwaApiUrl" defaultValue={(state.whatsapp as Record<string, string>).openwaApiUrl || ""} placeholder="https://your-openwa-instance:8080" /></div>
+              <div className="field"><label>OpenWA API Key</label><input className="input" name="openwaApiKey" placeholder={(state.whatsapp as Record<string, string>).openwaApiKey ? "Key is saved" : "Optional API key"} /></div>
+              <p style={{ fontSize: 12, color: "#5f5f59", marginTop: 4 }}>Webhook URL for RSVP replies: <code style={{ background: "#f0f0ee", padding: "2px 6px", borderRadius: 4 }}>{typeof window !== "undefined" ? `${window.location.origin}/api/webhook/openwa` : "/api/webhook/openwa"}</code></p>
+            </details>
+
+            <details open={state.whatsapp.provider === "personal"}>
+              <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: 13, color: "#4a654a", marginBottom: 8 }}>Personal Bridge Settings</summary>
+              <div className="field"><label>Personal bridge URL</label><input className="input" name="personalBridgeUrl" defaultValue={state.whatsapp.personalBridgeUrl || ""} placeholder="Optional persistent bridge URL" /></div>
+              <div className="field"><label>Personal bridge token</label><input className="input" name="personalBridgeToken" placeholder={state.whatsapp.personalBridgeToken === "SET" ? "Token is saved" : "Optional bridge token"} /></div>
+            </details>
+
+            <details open={state.whatsapp.provider === "meta"}>
+              <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: 13, color: "#4a654a", marginBottom: 8 }}>Meta Cloud API Settings</summary>
+              <div className="field"><label>Graph version</label><input className="input" name="graphVersion" defaultValue={state.whatsapp.graphVersion || "v23.0"} /></div>
+              <div className="field"><label>Phone number ID</label><input className="input" name="phoneNumberId" defaultValue={state.whatsapp.phoneNumberId || ""} /></div>
+              <div className="field"><label>Access token</label><input className="input" name="accessToken" placeholder={state.whatsapp.accessToken === "SET" ? "Token is saved" : "Paste Meta token"} /></div>
+              <div className="field"><label>Webhook verify token</label><input className="input" name="verifyToken" defaultValue={state.whatsapp.verifyToken || ""} /></div>
+            </details>
+
+            <div className="row" style={{ marginTop: 12 }}>
               <button className="btn primary" disabled={busy === "settings"}>{busy === "settings" ? "Saving..." : "Save WhatsApp Settings"}</button>
               <button className="btn" type="button" disabled={busy === "wa-status"} onClick={checkWhatsAppStatus}>{busy === "wa-status" ? "Checking..." : "Check Status"}</button>
-              <button className="btn" type="button" disabled={busy === "wa-start" || state.whatsapp.provider !== "personal"} onClick={startPersonalWhatsApp}>{busy === "wa-start" ? "Starting..." : "Start Personal QR"}</button>
+              {state.whatsapp.provider === "personal" && <button className="btn" type="button" disabled={busy === "wa-start"} onClick={startPersonalWhatsApp}>{busy === "wa-start" ? "Starting..." : "Start Personal QR"}</button>}
             </div>
             {whatsAppStatus ? (
               <div className={`status-card ${whatsAppStatus.error ? "error" : "ok"}`} style={{ marginTop: 12 }}>
@@ -564,15 +585,26 @@ export default function Dashboard() {
             <div className="section-heading compact">
               <div>
                 <h2>Send Control</h2>
-                <p>Checked rows only. Confirmation stays explicit.</p>
+                <p>Checked rows only. Messages are throttled ({state.whatsapp.provider === "meta" ? "200ms" : "3s"} between sends to avoid bans).</p>
               </div>
             </div>
-            <p className="notice">Select rows below, then click Send.</p>
+            <p className="notice">Select rows below, then click Send. {state.whatsapp.provider === "openwa" ? "Messages send automatically via OpenWA API." : "Each message opens a wa.me link or sends via the configured provider."}</p>
             <div className="row">
-              <button className="btn danger" disabled={!selectedMessages.size || busy === "send"} onClick={sendSelected}>
-                {busy === "send" ? "Sending..." : `Send ${selectedMessages.size} Selected`}
+              <button className="btn danger" disabled={!selectedMessages.size || busy === "send"} onClick={() => setSendConfirm(`send-${selectedMessages.size}`)}>
+                {`Send ${selectedMessages.size} Selected`}
               </button>
+              {busy === "send" && <span style={{ fontSize: 13, color: "#5f5f59" }}>Sending in progress... please wait</span>}
             </div>
+            {sendConfirm.startsWith("send-") && (
+              <div className="confirm-dialog" style={{ background: "#fff8e1", border: "1px solid #f9a825", borderRadius: 10, padding: 16, marginTop: 8 }}>
+                <p style={{ fontWeight: 600, marginBottom: 8 }}>Confirm: Send {selectedMessages.size} messages via {state.whatsapp.provider === "openwa" ? "OpenWA" : state.whatsapp.provider === "meta" ? "Meta Cloud API" : "Personal WhatsApp"}?</p>
+                <p style={{ fontSize: 13, color: "#5f5f59", marginBottom: 12 }}>This will send real WhatsApp messages to the selected guests. This action cannot be undone.</p>
+                <div className="row">
+                  <button className="btn danger" disabled={busy === "send"} onClick={sendSelected}>{busy === "send" ? "Sending..." : "Yes, Send Now"}</button>
+                  <button className="btn" onClick={() => setSendConfirm("")}>Cancel</button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="panel panel-messages">
@@ -586,7 +618,19 @@ export default function Dashboard() {
               <table>
                 <thead>
                   <tr>
-                    <th></th>
+                    <th>
+                      <input
+                        type="checkbox"
+                        checked={selectedMessages.size > 0 && selectedMessages.size === state.campaign.messages.filter((m) => m.status !== "SENT").length}
+                        onChange={(event) => {
+                          if (event.target.checked) {
+                            setSelectedMessages(new Set(state.campaign.messages.filter((m) => m.status !== "SENT").map((m) => m.id)));
+                          } else {
+                            setSelectedMessages(new Set());
+                          }
+                        }}
+                      />
+                    </th>
                     <th>Name</th>
                     <th>Phone</th>
                     <th>Tab</th>
@@ -616,12 +660,12 @@ export default function Dashboard() {
                             }}
                           />
                         </td>
-                        <td>{contact?.name || ""}</td>
-                        <td>{contact?.phone || ""}</td>
+                        <td style={{ direction: "auto", unicodeBidi: "plaintext" }}>{contact?.name || ""}</td>
+                        <td dir="ltr">{contact?.phone || ""}</td>
                         <td>{contact?.sourceTab || ""}</td>
                         <td><span className={`pill ${message.status === "FAILED" ? "warn" : ""}`}>{message.status}</span></td>
                         <td><span className={`pill ${message.rsvp === "YES" ? "yes" : message.rsvp === "NO" ? "no" : ""}`}>{message.rsvp || "Pending"}</span></td>
-                        <td>{message.body.slice(0, 180)}</td>
+                        <td style={{ direction: "auto", unicodeBidi: "plaintext", maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis" }}>{message.body.slice(0, 180)}</td>
                         <td>
                           <a href={waLink} target="_blank" rel="noopener noreferrer" className="btn btn-sm" style={{ background: "#25D366", color: "#fff", padding: "4px 12px", borderRadius: 6, fontSize: 13, textDecoration: "none", whiteSpace: "nowrap" }}>
                             WhatsApp

@@ -141,9 +141,16 @@ function value(contact: Contact, key: string) {
   return contact.fields[key] || "";
 }
 
+export function shortToken() {
+  const chars = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+  const bytes = new Uint8Array(8);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => chars[b % chars.length]).join("");
+}
+
 export function renderBody(template: Template, contact: Contact, token: string) {
   const site = siteUrl();
-  const base = `${site}/rsvp/${encodeURIComponent(token)}`;
+  const base = `${site}?t=${encodeURIComponent(token)}`;
   const values: Record<string, string> = {
     attending_link: `${base}?response=YES`,
     not_attending_link: `${base}?response=NO`,
@@ -162,7 +169,8 @@ export function rebuildMessages(campaign: Campaign, template: Template) {
   const existing = new Map(campaign.messages.map((message) => [message.contactId, message]));
   campaign.messages = campaign.contacts.map((contact): Message => {
     const previous = existing.get(contact.id);
-    const token = previous?.token || crypto.randomUUID();
+    const keepToken = previous?.token && (previous.sentAt || previous.rsvp);
+    const token = keepToken ? previous.token : shortToken();
     return {
       id: previous?.id || crypto.randomUUID(),
       contactId: contact.id,

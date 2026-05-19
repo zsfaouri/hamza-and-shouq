@@ -169,8 +169,7 @@ export function rebuildMessages(campaign: Campaign, template: Template) {
   const existing = new Map(campaign.messages.map((message) => [message.contactId, message]));
   campaign.messages = campaign.contacts.map((contact): Message => {
     const previous = existing.get(contact.id);
-    const keepToken = previous?.token && (previous.sentAt || previous.rsvp);
-    const token = keepToken ? previous.token : shortToken();
+    const token = previous?.token || shortToken();
     return {
       id: previous?.id || crypto.randomUUID(),
       contactId: contact.id,

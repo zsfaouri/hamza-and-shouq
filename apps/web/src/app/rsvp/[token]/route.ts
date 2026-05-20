@@ -20,7 +20,8 @@ export async function GET(request: Request, context: { params: Promise<{ token: 
   if (!hadMessage || repaired) await saveStateStrict(state);
 
   const contact = state.campaign.contacts.find((item) => item.id === message.contactId);
-  const guestName = message.recipientSnapshotAt ? message.recipientName : contact?.fields?.legacyToken === token ? contact.name : "Guest";
+  const needsVerification = !message.recipientSnapshotAt;
+  const guestName = needsVerification ? "Guest" : contact?.fields?.legacyToken === token ? contact.name : message.recipientName;
   const currentRsvp = message.rsvp || "";
   const requestUrl = new URL(request.url);
   const origin = requestUrl.origin;
@@ -28,7 +29,7 @@ export async function GET(request: Request, context: { params: Promise<{ token: 
   const hasMedia = state.templates?.some((t) => t.mediaData && t.mediaMimeType);
   const ogImage = hasMedia ? `${origin}/api/media/invitation` : "";
 
-  return new Response(landingPage({ token, guestName, currentRsvp, ogImage, autoResponse }), {
+  return new Response(landingPage({ token, guestName, currentRsvp, ogImage, autoResponse, needsVerification }), {
     headers: { "Content-Type": "text/html; charset=utf-8" },
   });
 }
@@ -42,8 +43,8 @@ function notFoundPage() {
 </head><body><div class="card"><h1>Link not found</h1><p>Sorry, this invitation link is not valid.</p></div></body></html>`;
 }
 
-function landingPage(data: { token: string; guestName: string; currentRsvp: string; ogImage: string; autoResponse: string }) {
-  const { token, guestName, currentRsvp, ogImage, autoResponse } = data;
+function landingPage(data: { token: string; guestName: string; currentRsvp: string; ogImage: string; autoResponse: string; needsVerification: boolean }) {
+  const { token, guestName, currentRsvp, ogImage, autoResponse, needsVerification } = data;
   const escapedName = guestName.replace(/</g, "&lt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
   return `<!doctype html>
@@ -116,6 +117,12 @@ header h1 em{font-style:italic;font-weight:300}
 /* ---- RSVP ---- */
 .rsvp{width:100%;display:flex;flex-direction:column;align-items:center;gap:10px}
 .rsvp .prompt{font-size:13px;color:#434841}
+.verify{width:100%;display:${needsVerification ? "flex" : "none"};flex-direction:column;gap:8px;background:rgba(255,255,255,.45);border:1px solid #d8d1ad;border-radius:12px;padding:12px}
+.verify p{font-size:12px;color:#434841;text-align:center;line-height:1.45}
+.verify-row{display:flex;gap:8px}
+.verify input{flex:1;min-width:0;border:1px solid #c3c8bf;border-radius:10px;background:rgba(255,255,255,.8);padding:10px 12px;font-size:14px;direction:ltr}
+.verify button{border:none;border-radius:10px;background:#4a654a;color:#fff;font-weight:700;padding:0 12px;cursor:pointer}
+.verify button:disabled{opacity:.55;cursor:not-allowed}
 .rsvp-btns{display:flex;gap:10px;width:100%}
 .rsvp-btn{flex:1;padding:12px 10px;border-radius:12px;border:none;cursor:pointer;font-family:Manrope,sans-serif;font-weight:600;font-size:13px;letter-spacing:.04em;display:flex;align-items:center;justify-content:center;gap:6px;transition:all .2s}
 .rsvp-btn .mat{font-size:18px}
@@ -267,6 +274,13 @@ header h1 em{font-style:italic;font-weight:300}
   </section>
 
   <section class="rsvp fi d5" id="rsvp">
+    <div class="verify" id="verify-box">
+      <p>Enter the phone number that received this invitation to show the correct recipient name.</p>
+      <div class="verify-row">
+        <input id="verify-phone" inputmode="tel" autocomplete="tel" placeholder="07XXXXXXXX">
+        <button id="verify-btn" type="button" onclick="verifyPhone()">Verify</button>
+      </div>
+    </div>
     <div id="rsvp-badge" style="${currentRsvp ? "" : "display:none"}">
       <span class="badge ${currentRsvp === "YES" ? "y" : currentRsvp === "NO" ? "n" : ""}">
         ${currentRsvp === "YES" ? "&#10003; Attending — See you there!" : currentRsvp === "NO" ? "&#10007; We'll miss you!" : ""}
@@ -314,8 +328,15 @@ document.getElementById("cd-m").textContent=String(M).padStart(2,"0");
 document.getElementById("cd-s").textContent=String(S).padStart(2,"0")}
 tick();setInterval(tick,1000);
 
-var T=${JSON.stringify(token)},busy=0;
+var T=${JSON.stringify(token)},busy=0,needsVerification=${JSON.stringify(needsVerification)};
 function toast(m){var t=document.getElementById("toast");t.textContent=m;t.classList.add("show");setTimeout(function(){t.classList.remove("show")},2800)}
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\\"":"&quot;","'":"&#39;"}[c]})}
+function verifyPhone(){if(busy)return;var input=document.getElementById("verify-phone"),btn=document.getElementById("verify-btn"),phone=input.value.trim();if(!phone){toast("Enter phone number.");return}busy=1;btn.disabled=true;
+fetch("/api/rsvp/verify-phone",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token:T,phone:phone})})
+.then(function(res){return res.json().then(function(d){if(!res.ok)throw new Error(d.error);return d})})
+.then(function(d){document.querySelector(".guest .name").innerHTML=esc(d.name);document.getElementById("verify-box").style.display="none";needsVerification=false;toast("Recipient name confirmed.")})
+.catch(function(){toast("Phone number was not found.")})
+.finally(function(){btn.disabled=false;busy=0})}
 function rsvp(r){if(busy)return;busy=1;
 var y=document.getElementById("by"),n=document.getElementById("bn");
 y.disabled=n.disabled=true;

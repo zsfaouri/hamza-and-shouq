@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { activeTemplate, createTemplate, defaultState, ensureInvitationMessage, imageDataUrl, pruneUnsavedGuestInvitations, rebuildMessages, renderBody, repairLegacyInvitations, setActiveTemplate, setRsvp, stampRecipientSnapshot, upsertTemplate } from "../src/lib/domain";
+import { findLegacyRecipientByPhone, legacyRecipientContact, normalizeJordanPhone } from "../src/lib/legacy-recipients";
 import type { AppState, Contact, Message, Template } from "../src/lib/types";
 
 const contact: Contact = {
@@ -140,5 +141,10 @@ assert.equal(snapshotMessage.recipientPhone, "962799999999");
 assert.equal(snapshotMessage.recipientSnapshotAt, "2026-05-21T00:00:00.000Z");
 assert.match(snapshotMessage.body, /Dear Correct Recipient/);
 assert.doesNotMatch(snapshotMessage.body, /Wrong Recipient/);
+assert.equal(normalizeJordanPhone("07 90344602"), "790344602");
+assert.equal(normalizeJordanPhone("+962 7 9034 4602"), "790344602");
+assert.equal(findLegacyRecipientByPhone("+962 7 9034 4602")?.name, "السيد حسام التكروري و عقيلته");
+assert.equal(findLegacyRecipientByPhone("0799999999"), null);
+assert.equal(legacyRecipientContact({ name: "Guest A", phone: "0790344602" }, "tok1").phone, "962790344602");
 
 console.log("domain tests passed");

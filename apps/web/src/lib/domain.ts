@@ -1,4 +1,5 @@
 import type { AppState, Campaign, Contact, Message, RsvpResponse, Template } from "./types";
+import { findLegacyRecipientByToken, legacyRecipientContact } from "./legacy-recipients";
 
 export function nowIso() {
   return new Date().toISOString();
@@ -249,12 +250,13 @@ export function ensureInvitationMessage(state: AppState, token: string) {
   if (!validInvitationToken(token)) return null;
 
   const contact = nextLegacyContact(state, token);
+  const verified = contact.sourceTab === "legacy-recovery";
   const message: Message = {
     id: crypto.randomUUID(),
     contactId: contact.id,
     recipientName: contact.name,
     recipientPhone: contact.phone,
-    recipientSnapshotAt: "",
+    recipientSnapshotAt: verified ? nowIso() : "",
     token,
     body: renderBody(activeTemplate(state), contact, token),
     status: "READY",
@@ -273,6 +275,15 @@ export function ensureInvitationMessage(state: AppState, token: string) {
 export function repairLegacyInvitations(state: AppState) {
   let changed = false;
   for (const message of state.campaign.messages) {
+    const recipient = findLegacyRecipientByToken(message.token);
+    if (recipient && !message.recipientSnapshotAt) {
+      const recoveredContact = legacyRecipientContact(recipient, message.token);
+      upsertLegacyContact(state, recoveredContact);
+      message.contactId = recoveredContact.id;
+      stampRecipientSnapshot(state, message, recoveredContact);
+      changed = true;
+      continue;
+    }
     const contact = state.campaign.contacts.find((item) => item.id === message.contactId);
     if (!contact || contact.sourceTab !== "legacy-link" || contact.name !== "Guest") continue;
     const replacement = exactLegacyContact(state, message.token);
@@ -318,6 +329,12 @@ function exactLegacyContact(state: AppState, token: string) {
 function nextLegacyContact(state: AppState, token: string): Contact {
   const exact = exactLegacyContact(state, token);
   if (exact) return exact;
+  const recovered = findLegacyRecipientByToken(token);
+  if (recovered) {
+    const contact = legacyRecipientContact(recovered, token);
+    upsertLegacyContact(state, contact);
+    return contact;
+  }
   const existing = state.campaign.contacts.find((contact) => contact.id === `legacy-${token}`);
   if (existing) return existing;
 

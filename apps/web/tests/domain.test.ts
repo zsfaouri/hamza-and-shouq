@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { activeTemplate, createTemplate, defaultState, ensureInvitationMessage, imageDataUrl, pruneUnsavedGuestInvitations, rebuildMessages, renderBody, repairLegacyInvitations, setActiveTemplate, setRsvp, stampRecipientSnapshot, upsertTemplate } from "../src/lib/domain";
-import { findLegacyRecipientByPhone, legacyRecipientContact, normalizeJordanPhone } from "../src/lib/legacy-recipients";
+import { findLegacyRecipientByPhone, findLegacyRecipientByToken, legacyRecipientContact, normalizeJordanPhone } from "../src/lib/legacy-recipients";
 import type { AppState, Contact, Message, Template } from "../src/lib/types";
 
 const contact: Contact = {
@@ -144,7 +144,13 @@ assert.doesNotMatch(snapshotMessage.body, /Wrong Recipient/);
 assert.equal(normalizeJordanPhone("07 90344602"), "790344602");
 assert.equal(normalizeJordanPhone("+962 7 9034 4602"), "790344602");
 assert.equal(findLegacyRecipientByPhone("+962 7 9034 4602")?.name, "السيد حسام التكروري و عقيلته");
+assert.equal(findLegacyRecipientByToken("DWvMGRZ8")?.name, "عطوفة اكثم المجالي و عائلته");
 assert.equal(findLegacyRecipientByPhone("0799999999"), null);
 assert.equal(legacyRecipientContact({ name: "Guest A", phone: "0790344602" }, "tok1").phone, "962790344602");
+
+const recoveredState = defaultState();
+const recoveredMessage = ensureInvitationMessage(recoveredState, "fjDZh3dq");
+assert.equal(recoveredMessage?.recipientName, "المهندس أنس الذنبيات و عقيلته");
+assert.ok(recoveredMessage?.recipientSnapshotAt);
 
 console.log("domain tests passed");

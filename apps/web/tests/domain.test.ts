@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { activeTemplate, createTemplate, defaultState, imageDataUrl, renderBody, setActiveTemplate, setRsvp, upsertTemplate } from "../src/lib/domain";
+import { activeTemplate, createTemplate, defaultState, ensureInvitationMessage, imageDataUrl, renderBody, setActiveTemplate, setRsvp, upsertTemplate } from "../src/lib/domain";
 import type { AppState, Contact, Message, Template } from "../src/lib/types";
 
 const contact: Contact = {
@@ -24,8 +24,8 @@ const template: Template = {
 const body = renderBody(template, contact, "token-1");
 assert.match(body, /Hi Zein/);
 assert.match(body, /Seats: 2/);
-assert.match(body, /\/rsvp\/token-1\?response=YES/);
-assert.match(body, /\/rsvp\/token-1\?response=NO/);
+assert.match(body, /\?t=token-1&response=YES/);
+assert.match(body, /\?t=token-1&response=NO/);
 
 const message: Message = {
   id: "m1",
@@ -54,12 +54,19 @@ const state = {
     senderPhone: "",
     personalBridgeUrl: "",
     personalBridgeToken: "",
+    openwaApiUrl: "",
+    openwaApiKey: "",
   },
 } satisfies AppState;
 
 assert.equal(setRsvp(state, "token-1", "YES"), true);
 assert.equal(state.campaign.messages[0].rsvp, "YES");
 assert.equal(setRsvp(state, "bad", "NO"), false);
+const legacy = ensureInvitationMessage(state, "JybYzueR");
+assert.equal(legacy?.token, "JybYzueR");
+assert.equal(setRsvp(state, "JybYzueR", "NO"), true);
+assert.equal(state.campaign.messages.find((item) => item.token === "JybYzueR")?.rsvp, "NO");
+assert.equal(ensureInvitationMessage(state, "../bad"), null);
 
 const multi = defaultState();
 assert.equal(multi.templates.length, 1);

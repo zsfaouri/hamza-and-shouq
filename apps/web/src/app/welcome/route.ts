@@ -24,6 +24,46 @@ function welcomePage() {
 html,body{height:100%;overflow:hidden}
 body{font-family:Manrope,sans-serif;background:#f7fbec;color:#181d14}
 
+/* ============ SPLASH ============ */
+.splash{position:fixed;inset:0;z-index:100;background:#0a0f0a;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:24px;transition:opacity 1s ease-out,visibility 1s ease-out}
+.splash.done{opacity:0;visibility:hidden;pointer-events:none}
+
+.splash-logo{
+  width:clamp(180px,42vw,300px);
+  opacity:0;
+  transform:translateY(20px) scale(.95);
+  animation:logoIn 2.4s cubic-bezier(.25,.46,.45,.94) .3s forwards;
+}
+
+/* Thin gold ornamental line */
+.splash-ornament{
+  width:0;
+  height:1px;
+  background:linear-gradient(90deg,transparent,rgba(192,157,37,.6),transparent);
+  animation:ornamentGrow 1.6s cubic-bezier(.22,1,.36,1) 1.6s forwards;
+}
+
+/* Subtitle */
+.splash-text{
+  font-family:'EB Garamond',serif;
+  font-size:clamp(11px,1.8vw,15px);
+  letter-spacing:.25em;
+  text-transform:uppercase;
+  color:rgba(192,157,37,.45);
+  opacity:0;
+  transform:translateY(8px);
+  animation:textIn 1s ease-out 2.2s forwards;
+}
+
+@keyframes logoIn{
+  0%{opacity:0;transform:translateY(20px) scale(.95);filter:brightness(.6)}
+  50%{opacity:1;filter:brightness(1)}
+  100%{opacity:1;transform:translateY(0) scale(1);filter:brightness(1)}
+}
+@keyframes ornamentGrow{to{width:clamp(80px,20vw,160px)}}
+@keyframes textIn{to{opacity:1;transform:translateY(0)}}
+
+/* ============ MAIN PAGE ============ */
 .bg{position:fixed;inset:0;z-index:0;overflow:hidden}
 .bg svg{position:absolute;opacity:.18}
 .bg .tl{top:-5%;left:-5%;width:45%;height:55%}
@@ -68,10 +108,12 @@ header h1 em{font-style:italic;font-weight:300}
 
 .foot{font-size:11px;color:#9ca3af;text-align:center}
 
+/* Page content fade-in */
 @keyframes up{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
-.fi{animation:up .5s ease-out both}
+.fi{opacity:0;animation:up .5s ease-out both}
 .d1{animation-delay:.05s}.d2{animation-delay:.1s}.d3{animation-delay:.15s}
 .d4{animation-delay:.2s}.d5{animation-delay:.25s}.d6{animation-delay:.3s}
+.page-wait .fi{animation-play-state:paused;opacity:0}
 
 @media(min-width:700px){
   .card{max-width:440px;gap:clamp(16px,2.5vh,28px)}
@@ -90,6 +132,14 @@ header h1 em{font-style:italic;font-weight:300}
 </head>
 <body>
 
+<!-- ===== SPLASH ===== -->
+<div class="splash" id="splash">
+  <img class="splash-logo" src="/Untitled-1.png" alt="حمزة وشوق" draggable="false">
+  <div class="splash-ornament"></div>
+  <p class="splash-text">The Wedding</p>
+</div>
+
+<!-- ===== BACKGROUND ===== -->
 <div class="bg">
   <svg class="tl" viewBox="0 0 500 600" fill="none" xmlns="http://www.w3.org/2000/svg">
     <g opacity=".9">
@@ -140,7 +190,8 @@ header h1 em{font-style:italic;font-weight:300}
   </svg>
 </div>
 
-<div class="page">
+<!-- ===== MAIN CONTENT ===== -->
+<div class="page page-wait" id="pageContent">
 <div class="card">
 
   <header class="fi">
@@ -196,6 +247,7 @@ header h1 em{font-style:italic;font-weight:300}
 </div>
 
 <script>
+/* Countdown */
 var W=new Date("2026-07-03T17:00:00Z");
 function tick(){var d=Math.max(0,W-new Date()),D=d/864e5|0,H=d%864e5/36e5|0,M=d%36e5/6e4|0,S=d%6e4/1e3|0;
 document.getElementById("cd-d").textContent=String(D).padStart(2,"0");
@@ -203,6 +255,25 @@ document.getElementById("cd-h").textContent=String(H).padStart(2,"0");
 document.getElementById("cd-m").textContent=String(M).padStart(2,"0");
 document.getElementById("cd-s").textContent=String(S).padStart(2,"0")}
 tick();setInterval(tick,1000);
+
+/* Splash dismiss */
+var done=false;
+function dismiss(){
+  if(done)return;done=true;
+  var sp=document.getElementById("splash");
+  var pg=document.getElementById("pageContent");
+  sp.classList.add("done");
+  setTimeout(function(){
+    sp.style.display="none";
+    pg.classList.remove("page-wait");
+    pg.querySelectorAll(".fi").forEach(function(el){
+      el.style.animation="none";el.offsetHeight;el.style.animation="";
+    });
+  },1000);
+}
+setTimeout(dismiss,3800);
+document.getElementById("splash").addEventListener("click",dismiss);
+document.getElementById("splash").addEventListener("touchstart",dismiss);
 </script>
 </body></html>`;
 }

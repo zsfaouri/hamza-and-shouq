@@ -1,4 +1,4 @@
-import { setRsvp } from "@/lib/domain";
+import { ensureInvitationMessage, setRsvp } from "@/lib/domain";
 import { loadState, saveStateStrict } from "@/lib/store";
 import type { RsvpResponse } from "@/lib/types";
 
@@ -19,7 +19,7 @@ export async function POST(request: Request) {
     }
 
     const state = await loadState({ fresh: true });
-    const message = state.campaign.messages.find((m) => m.token === token);
+    const message = ensureInvitationMessage(state, token);
     if (!message) return Response.json({ error: "Invalid token." }, { status: 404 });
 
     setRsvp(state, token, response as RsvpResponse);

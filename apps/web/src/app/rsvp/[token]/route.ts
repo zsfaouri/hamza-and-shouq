@@ -1,4 +1,5 @@
-import { loadState } from "@/lib/store";
+import { ensureInvitationMessage } from "@/lib/domain";
+import { loadState, saveStateStrict } from "@/lib/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -6,7 +7,8 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request, context: { params: Promise<{ token: string }> }) {
   const { token } = await context.params;
   const state = await loadState({ fresh: true });
-  const message = state.campaign.messages.find((item) => item.token === token);
+  const hadMessage = state.campaign.messages.some((item) => item.token === token);
+  const message = ensureInvitationMessage(state, token);
 
   if (!message) {
     return new Response(notFoundPage(), {
@@ -14,6 +16,7 @@ export async function GET(request: Request, context: { params: Promise<{ token: 
       headers: { "Content-Type": "text/html; charset=utf-8" },
     });
   }
+  if (!hadMessage) await saveStateStrict(state);
 
   const contact = state.campaign.contacts.find((item) => item.id === message.contactId);
   const guestName = contact?.name || "Guest";

@@ -156,6 +156,10 @@ export function shortToken() {
   return Array.from(bytes, (b) => chars[b % chars.length]).join("");
 }
 
+export function validInvitationToken(token: string) {
+  return /^[A-Za-z0-9][A-Za-z0-9-]{5,63}$/.test(token);
+}
+
 export function renderBody(template: Template, contact: Contact, token: string) {
   const site = siteUrl();
   const base = `${site}?t=${encodeURIComponent(token)}`;
@@ -201,4 +205,35 @@ export function setRsvp(state: AppState, token: string, response: RsvpResponse) 
   message.rsvpAt = nowIso();
   state.campaign.updatedAt = nowIso();
   return true;
+}
+
+export function ensureInvitationMessage(state: AppState, token: string) {
+  const existing = state.campaign.messages.find((item) => item.token === token);
+  if (existing) return existing;
+  if (!validInvitationToken(token)) return null;
+
+  const contactId = `legacy-${token}`;
+  const contact = {
+    id: contactId,
+    name: "Guest",
+    phone: "",
+    sourceTab: "legacy-link",
+    fields: { legacyToken: token },
+  };
+  const message: Message = {
+    id: crypto.randomUUID(),
+    contactId,
+    token,
+    body: renderBody(activeTemplate(state), contact, token),
+    status: "READY",
+    providerMessageId: "",
+    error: "",
+    sentAt: "",
+    rsvp: "",
+    rsvpAt: "",
+  };
+  state.campaign.contacts.push(contact);
+  state.campaign.messages.push(message);
+  state.campaign.updatedAt = nowIso();
+  return message;
 }

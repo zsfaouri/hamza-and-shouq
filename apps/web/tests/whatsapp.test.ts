@@ -12,6 +12,8 @@ const base: WhatsAppSettings = {
   senderPhone: "962795941263",
   personalBridgeUrl: "",
   personalBridgeToken: "",
+  openwaApiUrl: "",
+  openwaApiKey: "",
 };
 
 assert.equal(whatsappConfigured(base), false);

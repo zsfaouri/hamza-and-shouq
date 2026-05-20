@@ -230,6 +230,26 @@ export default function Dashboard() {
     }
   }
 
+  async function prepareWhatsAppLink(messageId: string) {
+    setBusy(`manual-${messageId}`);
+    const popup = window.open("", "_blank");
+    try {
+      const result = await api<{ waLink: string; recipientName: string }>("/api/campaign/prepare-link", {
+        method: "POST",
+        body: JSON.stringify({ messageId }),
+      });
+      if (popup) popup.location.href = result.waLink;
+      else window.open(result.waLink, "_blank", "noopener,noreferrer");
+      await refresh();
+      show(`Saved recipient record for ${result.recipientName}.`);
+    } catch (err) {
+      if (popup) popup.close();
+      show(err instanceof Error ? err.message : "WhatsApp link failed.", true);
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function checkWhatsAppStatus() {
     setBusy("wa-status");
     try {
@@ -644,7 +664,7 @@ export default function Dashboard() {
                   {state.campaign.messages.map((message) => {
                     const contact = state.campaign.contacts.find((item) => item.id === message.contactId);
                     const phone = (message.recipientPhone || contact?.phone || "").replace(/[^\d]/g, "");
-                    const waLink = `https://wa.me/${phone}?text=${encodeURIComponent(message.body)}`;
+                    const preparing = busy === `manual-${message.id}`;
                     return (
                       <tr key={message.id}>
                         <td>
@@ -667,9 +687,15 @@ export default function Dashboard() {
                         <td><span className={`pill ${message.rsvp === "YES" ? "yes" : message.rsvp === "NO" ? "no" : ""}`}>{message.rsvp || "Pending"}</span></td>
                         <td dir="auto" style={{ maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis" }}>{message.body.slice(0, 180)}</td>
                         <td>
-                          <a href={waLink} target="_blank" rel="noopener noreferrer" className="btn btn-sm" style={{ background: "#25D366", color: "#fff", padding: "4px 12px", borderRadius: 6, fontSize: 13, textDecoration: "none", whiteSpace: "nowrap" }}>
-                            WhatsApp
-                          </a>
+                          <button
+                            type="button"
+                            disabled={!phone || preparing}
+                            onClick={() => void prepareWhatsAppLink(message.id)}
+                            className="btn btn-sm"
+                            style={{ background: "#25D366", color: "#fff", padding: "4px 12px", borderRadius: 6, fontSize: 13, whiteSpace: "nowrap" }}
+                          >
+                            {preparing ? "Saving..." : "WhatsApp"}
+                          </button>
                         </td>
                       </tr>
                     );

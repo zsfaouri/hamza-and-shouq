@@ -177,6 +177,15 @@ export function renderBody(template: Template, contact: Contact, token: string) 
   return `${rendered.trimEnd()}\n\nAttending: ${values.attending_link}\nNot attending: ${values.not_attending_link}`;
 }
 
+export function stampRecipientSnapshot(state: AppState, message: Message, contact: Contact, stampedAt = nowIso()) {
+  message.recipientName = contact.name;
+  message.recipientPhone = contact.phone;
+  message.recipientSnapshotAt = stampedAt;
+  message.body = renderBody(activeTemplate(state), contact, message.token);
+  state.campaign.updatedAt = stampedAt;
+  return message;
+}
+
 export function rebuildMessages(campaign: Campaign, template: Template) {
   const previousMessages = campaign.messages;
   const byContactId = new Map(previousMessages.map((message) => [message.contactId, message]));

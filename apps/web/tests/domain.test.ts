@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { activeTemplate, createTemplate, defaultState, ensureInvitationMessage, imageDataUrl, pruneUnsavedGuestInvitations, rebuildMessages, renderBody, repairLegacyInvitations, setActiveTemplate, setRsvp, upsertTemplate } from "../src/lib/domain";
+import { activeTemplate, createTemplate, defaultState, ensureInvitationMessage, imageDataUrl, pruneUnsavedGuestInvitations, rebuildMessages, renderBody, repairLegacyInvitations, setActiveTemplate, setRsvp, stampRecipientSnapshot, upsertTemplate } from "../src/lib/domain";
 import type { AppState, Contact, Message, Template } from "../src/lib/types";
 
 const contact: Contact = {
@@ -112,5 +112,33 @@ assert.equal(activeTemplate(multi).name, "Wedding invitation");
 assert.equal(multi.template.id, "template-main");
 assert.equal(imageDataUrl("image/png", "abc123"), "data:image/png;base64,abc123");
 assert.equal(imageDataUrl("", "abc123"), "");
+
+const snapshotState = defaultState();
+const snapshotTemplate = createTemplate("Snapshot", "Dear {{name}} link {{rsvp_link}}");
+upsertTemplate(snapshotState, snapshotTemplate, true);
+const snapshotContact: Contact = { id: "snap-contact", name: "Correct Recipient", phone: "962799999999", sourceTab: "Test", fields: {} };
+const snapshotMessage: Message = {
+  id: "snap-message",
+  contactId: snapshotContact.id,
+  recipientName: "Wrong Recipient",
+  recipientPhone: "000",
+  recipientSnapshotAt: "",
+  token: "snapToken",
+  body: "Dear Wrong Recipient",
+  status: "READY",
+  providerMessageId: "",
+  error: "",
+  sentAt: "",
+  rsvp: "",
+  rsvpAt: "",
+};
+snapshotState.campaign.contacts = [snapshotContact];
+snapshotState.campaign.messages = [snapshotMessage];
+stampRecipientSnapshot(snapshotState, snapshotMessage, snapshotContact, "2026-05-21T00:00:00.000Z");
+assert.equal(snapshotMessage.recipientName, "Correct Recipient");
+assert.equal(snapshotMessage.recipientPhone, "962799999999");
+assert.equal(snapshotMessage.recipientSnapshotAt, "2026-05-21T00:00:00.000Z");
+assert.match(snapshotMessage.body, /Dear Correct Recipient/);
+assert.doesNotMatch(snapshotMessage.body, /Wrong Recipient/);
 
 console.log("domain tests passed");

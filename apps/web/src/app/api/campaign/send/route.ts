@@ -1,5 +1,5 @@
 import { requireAuth } from "@/lib/auth";
-import { activeTemplate, nowIso } from "@/lib/domain";
+import { activeTemplate, nowIso, stampRecipientSnapshot } from "@/lib/domain";
 import { loadState, saveStateStrict } from "@/lib/store";
 import { sendWhatsAppText, whatsappConfigured, type MediaAttachment } from "@/lib/whatsapp";
 
@@ -36,18 +36,23 @@ export async function POST(request: Request) {
     const throttleMs = state.whatsapp.provider === "meta" ? 200 : 3000;
     const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-    let sent = 0;
-    let failed = 0;
-    let isFirst = true;
+    const pending = [];
+    const stampTime = nowIso();
     for (const id of messageIds) {
       const message = state.campaign.messages.find((item) => item.id === id);
       if (!message || message.status === "SENT") continue;
       const contact = state.campaign.contacts.find((item) => item.id === message.contactId);
       if (!contact) continue;
-      message.recipientName = contact.name;
-      message.recipientPhone = contact.phone;
-      message.recipientSnapshotAt = nowIso();
-      message.body = message.body.replace(/^\s*Guest(\s|\n|$)/, `${contact.name}$1`);
+      stampRecipientSnapshot(state, message, contact, stampTime);
+      pending.push({ message, contact });
+    }
+
+    await saveStateStrict(state);
+
+    let sent = 0;
+    let failed = 0;
+    let isFirst = true;
+    for (const { message, contact } of pending) {
 
       // Throttle between messages (skip delay for the first one)
       if (!isFirst) await sleep(throttleMs);

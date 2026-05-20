@@ -26,10 +26,9 @@ export async function POST(request: Request) {
     setRsvp(state, token, response as RsvpResponse);
     await saveStateStrict(state);
 
-    const contact = state.campaign.contacts.find((c) => c.id === message.contactId);
     return Response.json({
       ok: true,
-      name: contact?.name || "",
+      name: message.recipientName || "",
       rsvp: message.rsvp,
       rsvpAt: message.rsvpAt,
     });

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { activeTemplate, createTemplate, defaultState, ensureInvitationMessage, imageDataUrl, renderBody, repairLegacyInvitations, setActiveTemplate, setRsvp, upsertTemplate } from "../src/lib/domain";
+import { activeTemplate, createTemplate, defaultState, ensureInvitationMessage, imageDataUrl, pruneUnsavedGuestInvitations, rebuildMessages, renderBody, repairLegacyInvitations, setActiveTemplate, setRsvp, upsertTemplate } from "../src/lib/domain";
 import type { AppState, Contact, Message, Template } from "../src/lib/types";
 
 const contact: Contact = {
@@ -30,6 +30,8 @@ assert.match(body, /\?t=token-1&response=NO/);
 const message: Message = {
   id: "m1",
   contactId: "c1",
+  recipientName: "Zein",
+  recipientPhone: "962790000000",
   token: "token-1",
   body,
   status: "READY",
@@ -64,15 +66,37 @@ assert.equal(state.campaign.messages[0].rsvp, "YES");
 assert.equal(setRsvp(state, "bad", "NO"), false);
 const legacy = ensureInvitationMessage(state, "JybYzueR");
 assert.equal(legacy?.token, "JybYzueR");
-assert.equal(legacy?.contactId, "c1");
+assert.equal(legacy?.contactId, "legacy-JybYzueR");
 assert.equal(setRsvp(state, "JybYzueR", "NO"), true);
 assert.equal(state.campaign.messages.find((item) => item.token === "JybYzueR")?.rsvp, "NO");
 assert.equal(ensureInvitationMessage(state, "../bad"), null);
-state.campaign.contacts.push({ id: "legacy-old", name: "Guest", phone: "", sourceTab: "legacy-link", fields: { legacyToken: "old" } });
-state.campaign.contacts.push({ id: "c2", name: "Maha", phone: "962790000001", sourceTab: "Test", fields: {} });
+state.campaign.contacts.push({ id: "legacy-old", name: "Guest", phone: "", sourceTab: "legacy-link", fields: { legacyToken: "oldToken" } });
+state.campaign.contacts.push({ id: "c2", name: "Maha", phone: "962790000001", sourceTab: "Test", fields: { legacyToken: "oldToken" } });
 state.campaign.messages.push({ ...message, id: "legacy-message", contactId: "legacy-old", token: "oldToken", rsvp: "" });
 assert.equal(repairLegacyInvitations(state), true);
 assert.equal(state.campaign.messages.find((item) => item.token === "oldToken")?.contactId, "c2");
+
+const importedAgain: Contact = {
+  id: "new-contact-id",
+  name: "Zein",
+  phone: "962790000000",
+  sourceTab: "Import",
+  fields: {},
+};
+state.campaign.contacts = [importedAgain];
+rebuildMessages(state.campaign, template);
+assert.equal(state.campaign.messages.find((item) => item.contactId === "new-contact-id")?.token, "token-1");
+assert.equal(state.campaign.messages.find((item) => item.contactId === "new-contact-id")?.recipientName, "Zein");
+state.campaign.messages[0].status = "SENT";
+state.campaign.messages[0].sentAt = new Date(0).toISOString();
+state.campaign.contacts = [];
+rebuildMessages(state.campaign, template);
+assert.equal(state.campaign.messages[0].token, "token-1");
+assert.equal(state.campaign.messages[0].recipientName, "Zein");
+state.campaign.contacts.push({ id: "legacy-unsent", name: "Guest", phone: "", sourceTab: "legacy-link", fields: { legacyToken: "dropme" } });
+state.campaign.messages.push({ ...message, id: "legacy-unsent-message", contactId: "legacy-unsent", token: "dropme", recipientName: "Guest", recipientPhone: "", rsvp: "", status: "READY", sentAt: "", providerMessageId: "" });
+assert.equal(pruneUnsavedGuestInvitations(state), true);
+assert.equal(state.campaign.messages.some((item) => item.token === "dropme"), false);
 
 const multi = defaultState();
 assert.equal(multi.templates.length, 1);

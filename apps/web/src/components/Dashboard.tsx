@@ -643,7 +643,7 @@ export default function Dashboard() {
                 <tbody>
                   {state.campaign.messages.map((message) => {
                     const contact = state.campaign.contacts.find((item) => item.id === message.contactId);
-                    const phone = (contact?.phone || "").replace(/[^\d]/g, "");
+                    const phone = (message.recipientPhone || contact?.phone || "").replace(/[^\d]/g, "");
                     const waLink = `https://wa.me/${phone}?text=${encodeURIComponent(message.body)}`;
                     return (
                       <tr key={message.id}>
@@ -660,8 +660,8 @@ export default function Dashboard() {
                             }}
                           />
                         </td>
-                        <td dir="auto">{contact?.name || ""}</td>
-                        <td dir="ltr">{contact?.phone || ""}</td>
+                        <td dir="auto">{message.recipientName || contact?.name || ""}</td>
+                        <td dir="ltr">{message.recipientPhone || contact?.phone || ""}</td>
                         <td>{contact?.sourceTab || ""}</td>
                         <td><span className={`pill ${message.status === "FAILED" ? "warn" : ""}`}>{message.status}</span></td>
                         <td><span className={`pill ${message.rsvp === "YES" ? "yes" : message.rsvp === "NO" ? "no" : ""}`}>{message.rsvp || "Pending"}</span></td>

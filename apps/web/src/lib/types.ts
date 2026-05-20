@@ -25,6 +25,8 @@ export type MessageStatus = "READY" | "SENT" | "FAILED";
 export type Message = {
   id: string;
   contactId: string;
+  recipientName: string;
+  recipientPhone: string;
   token: string;
   body: string;
   status: MessageStatus;

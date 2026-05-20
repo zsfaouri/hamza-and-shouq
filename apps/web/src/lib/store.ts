@@ -65,6 +65,14 @@ function normalizeState(input: Partial<AppState> | null | undefined): AppState {
     whatsapp: { ...base.whatsapp, ...(input?.whatsapp || {}) },
   };
   merged.campaign.sheetUrl = String(merged.campaign.sheetUrl || "");
+  merged.campaign.messages = (merged.campaign.messages || []).map((message) => {
+    const contact = merged.campaign.contacts.find((item) => item.id === message.contactId);
+    return {
+      ...message,
+      recipientName: String((message as Record<string, unknown>).recipientName || contact?.name || ""),
+      recipientPhone: String((message as Record<string, unknown>).recipientPhone || contact?.phone || ""),
+    };
+  });
   merged.whatsapp.graphVersion = String(merged.whatsapp.graphVersion || "v23.0");
   merged.whatsapp.phoneNumberId = String(merged.whatsapp.phoneNumberId || "");
   merged.whatsapp.accessToken = String(merged.whatsapp.accessToken || "");
@@ -234,4 +242,3 @@ export async function storageDiagnostics() {
   }
   return out;
 }
-

@@ -44,6 +44,8 @@ export async function POST(request: Request) {
       if (!message || message.status === "SENT") continue;
       const contact = state.campaign.contacts.find((item) => item.id === message.contactId);
       if (!contact) continue;
+      message.recipientName = contact.name;
+      message.recipientPhone = contact.phone;
 
       // Throttle between messages (skip delay for the first one)
       if (!isFirst) await sleep(throttleMs);

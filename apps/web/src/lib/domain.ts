@@ -178,13 +178,28 @@ export function renderBody(template: Template, contact: Contact, token: string) 
 }
 
 export function rebuildMessages(campaign: Campaign, template: Template) {
-  const existing = new Map(campaign.messages.map((message) => [message.contactId, message]));
-  campaign.messages = campaign.contacts.map((contact): Message => {
-    const previous = existing.get(contact.id);
+  const previousMessages = campaign.messages;
+  const byContactId = new Map(previousMessages.map((message) => [message.contactId, message]));
+  const byPhone = new Map<string, Message>();
+  const byName = new Map<string, Message>();
+  for (const message of previousMessages) {
+    const contact = campaign.contacts.find((item) => item.id === message.contactId);
+    const phoneKey = stablePhone(message.recipientPhone || contact?.phone || "");
+    const nameKey = stableName(message.recipientName || contact?.name || "");
+    if (phoneKey && !byPhone.has(phoneKey)) byPhone.set(phoneKey, message);
+    if (nameKey && !byName.has(nameKey)) byName.set(nameKey, message);
+  }
+
+  const usedPreviousIds = new Set<string>();
+  const nextMessages = campaign.contacts.map((contact): Message => {
+    const previous = byContactId.get(contact.id) || byPhone.get(stablePhone(contact.phone)) || byName.get(stableName(contact.name));
+    if (previous) usedPreviousIds.add(previous.id);
     const token = previous?.token || shortToken();
     return {
       id: previous?.id || crypto.randomUUID(),
       contactId: contact.id,
+      recipientName: contact.name,
+      recipientPhone: contact.phone,
       token,
       body: renderBody(template, contact, token),
       status: previous?.status || "READY",
@@ -195,6 +210,16 @@ export function rebuildMessages(campaign: Campaign, template: Template) {
       rsvpAt: previous?.rsvpAt || "",
     };
   });
+  for (const previous of previousMessages) {
+    if (usedPreviousIds.has(previous.id)) continue;
+    if (!previous.sentAt && !previous.providerMessageId && !previous.rsvp && previous.status !== "SENT") continue;
+    nextMessages.push({
+      ...previous,
+      recipientName: previous.recipientName || "Guest",
+      recipientPhone: previous.recipientPhone || "",
+    });
+  }
+  campaign.messages = nextMessages;
   campaign.updatedAt = nowIso();
 }
 
@@ -216,6 +241,8 @@ export function ensureInvitationMessage(state: AppState, token: string) {
   const message: Message = {
     id: crypto.randomUUID(),
     contactId: contact.id,
+    recipientName: contact.name,
+    recipientPhone: contact.phone,
     token,
     body: renderBody(activeTemplate(state), contact, token),
     status: "READY",
@@ -236,9 +263,12 @@ export function repairLegacyInvitations(state: AppState) {
   for (const message of state.campaign.messages) {
     const contact = state.campaign.contacts.find((item) => item.id === message.contactId);
     if (!contact || contact.sourceTab !== "legacy-link" || contact.name !== "Guest") continue;
-    const replacement = nextLegacyContact(state, message.token);
+    const replacement = exactLegacyContact(state, message.token);
+    if (!replacement) continue;
     if (replacement.id === message.contactId) continue;
     message.contactId = replacement.id;
+    message.recipientName = replacement.name;
+    message.recipientPhone = replacement.phone;
     message.body = renderBody(activeTemplate(state), replacement, message.token);
     changed = true;
   }
@@ -246,29 +276,75 @@ export function repairLegacyInvitations(state: AppState) {
   return changed;
 }
 
-function nextLegacyContact(state: AppState, token: string): Contact {
-  const realContacts = state.campaign.contacts.filter((contact) => contact.sourceTab !== "legacy-link");
-  const seenPrimary = new Set<string>();
-  const usedRealContactIds = new Set<string>();
-  for (const message of state.campaign.messages) {
-    if (message.token === token) continue;
-    if (!realContacts.some((contact) => contact.id === message.contactId)) continue;
-    if (!seenPrimary.has(message.contactId)) {
-      seenPrimary.add(message.contactId);
-      continue;
-    }
-    usedRealContactIds.add(message.contactId);
-  }
-  const reusable = realContacts.find((contact) => !usedRealContactIds.has(contact.id));
-  if (reusable) return reusable;
+export function pruneUnsavedGuestInvitations(state: AppState) {
+  const removableContactIds = new Set<string>();
+  const originalCount = state.campaign.messages.length;
+  state.campaign.messages = state.campaign.messages.filter((message) => {
+    const contact = state.campaign.contacts.find((item) => item.id === message.contactId);
+    const removable = contact?.sourceTab === "legacy-link"
+      && contact.name === "Guest"
+      && message.status === "READY"
+      && !message.sentAt
+      && !message.providerMessageId
+      && !message.rsvp;
+    if (removable) removableContactIds.add(contact.id);
+    return !removable;
+  });
+  if (state.campaign.messages.length === originalCount) return false;
+  state.campaign.contacts = state.campaign.contacts.filter((contact) => {
+    if (!removableContactIds.has(contact.id)) return true;
+    return state.campaign.messages.some((message) => message.contactId === contact.id);
+  });
+  state.campaign.updatedAt = nowIso();
+  return true;
+}
 
-  const contact = {
+function exactLegacyContact(state: AppState, token: string) {
+  return state.campaign.contacts.find((contact) => legacyTokenForContact(contact) === token && contact.sourceTab !== "legacy-link");
+}
+
+function nextLegacyContact(state: AppState, token: string): Contact {
+  const exact = exactLegacyContact(state, token);
+  if (exact) return exact;
+  const existing = state.campaign.contacts.find((contact) => contact.id === `legacy-${token}`);
+  if (existing) return existing;
+
+  const contact = legacyGuestContact(tokenSafe(token));
+  upsertLegacyContact(state, contact);
+  return contact;
+}
+
+function legacyGuestContact(token: string): Contact {
+  return {
     id: `legacy-${token}`,
     name: "Guest",
     phone: "",
     sourceTab: "legacy-link",
     fields: { legacyToken: token },
   };
-  state.campaign.contacts.push(contact);
-  return contact;
+}
+
+function upsertLegacyContact(state: AppState, contact: Contact) {
+  if (!state.campaign.contacts.some((item) => item.id === contact.id)) state.campaign.contacts.push(contact);
+}
+
+function tokenSafe(token: string) {
+  return token.replace(/[^A-Za-z0-9-]/g, "");
+}
+
+function stablePhone(phone: string) {
+  return phone.replace(/\D/g, "");
+}
+
+function stableName(name: string) {
+  return name.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function legacyTokenForContact(contact: Contact) {
+  const aliases = new Set(["legacytoken", "legacy token", "token", "rsvp token", "sent token", "invitation token"]);
+  for (const [field, value] of Object.entries(contact.fields || {})) {
+    const key = field.trim().replace(/[_-]+/g, " ").replace(/\s+/g, " ").toLowerCase();
+    if (aliases.has(key) && String(value).trim()) return String(value).trim();
+  }
+  return "";
 }

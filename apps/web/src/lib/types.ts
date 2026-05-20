@@ -27,6 +27,7 @@ export type Message = {
   contactId: string;
   recipientName: string;
   recipientPhone: string;
+  recipientSnapshotAt: string;
   token: string;
   body: string;
   status: MessageStatus;

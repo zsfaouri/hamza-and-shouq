@@ -46,6 +46,8 @@ export async function POST(request: Request) {
       if (!contact) continue;
       message.recipientName = contact.name;
       message.recipientPhone = contact.phone;
+      message.recipientSnapshotAt = nowIso();
+      message.body = message.body.replace(/^\s*Guest(\s|\n|$)/, `${contact.name}$1`);
 
       // Throttle between messages (skip delay for the first one)
       if (!isFirst) await sleep(throttleMs);

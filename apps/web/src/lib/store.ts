@@ -71,6 +71,7 @@ function normalizeState(input: Partial<AppState> | null | undefined): AppState {
       ...message,
       recipientName: String((message as Record<string, unknown>).recipientName || contact?.name || ""),
       recipientPhone: String((message as Record<string, unknown>).recipientPhone || contact?.phone || ""),
+      recipientSnapshotAt: String((message as Record<string, unknown>).recipientSnapshotAt || ""),
     };
   });
   merged.whatsapp.graphVersion = String(merged.whatsapp.graphVersion || "v23.0");

@@ -20,7 +20,7 @@ export async function GET(request: Request, context: { params: Promise<{ token: 
   if (!hadMessage || repaired) await saveStateStrict(state);
 
   const contact = state.campaign.contacts.find((item) => item.id === message.contactId);
-  const guestName = message.recipientName || contact?.name || "Guest";
+  const guestName = message.recipientSnapshotAt ? message.recipientName : contact?.fields?.legacyToken === token ? contact.name : "Guest";
   const currentRsvp = message.rsvp || "";
   const requestUrl = new URL(request.url);
   const origin = requestUrl.origin;

@@ -28,7 +28,7 @@ export async function POST(request: Request) {
 
     return Response.json({
       ok: true,
-      name: message.recipientName || "",
+      name: message.recipientSnapshotAt ? message.recipientName : "",
       rsvp: message.rsvp,
       rsvpAt: message.rsvpAt,
     });

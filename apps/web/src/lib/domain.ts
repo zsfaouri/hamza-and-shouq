@@ -200,6 +200,7 @@ export function rebuildMessages(campaign: Campaign, template: Template) {
       contactId: contact.id,
       recipientName: contact.name,
       recipientPhone: contact.phone,
+      recipientSnapshotAt: previous?.recipientSnapshotAt || "",
       token,
       body: renderBody(template, contact, token),
       status: previous?.status || "READY",
@@ -217,6 +218,7 @@ export function rebuildMessages(campaign: Campaign, template: Template) {
       ...previous,
       recipientName: previous.recipientName || "Guest",
       recipientPhone: previous.recipientPhone || "",
+      recipientSnapshotAt: previous.recipientSnapshotAt || "",
     });
   }
   campaign.messages = nextMessages;
@@ -243,6 +245,7 @@ export function ensureInvitationMessage(state: AppState, token: string) {
     contactId: contact.id,
     recipientName: contact.name,
     recipientPhone: contact.phone,
+    recipientSnapshotAt: "",
     token,
     body: renderBody(activeTemplate(state), contact, token),
     status: "READY",

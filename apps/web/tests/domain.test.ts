@@ -32,6 +32,7 @@ const message: Message = {
   contactId: "c1",
   recipientName: "Zein",
   recipientPhone: "962790000000",
+  recipientSnapshotAt: new Date(0).toISOString(),
   token: "token-1",
   body,
   status: "READY",
@@ -94,7 +95,7 @@ rebuildMessages(state.campaign, template);
 assert.equal(state.campaign.messages[0].token, "token-1");
 assert.equal(state.campaign.messages[0].recipientName, "Zein");
 state.campaign.contacts.push({ id: "legacy-unsent", name: "Guest", phone: "", sourceTab: "legacy-link", fields: { legacyToken: "dropme" } });
-state.campaign.messages.push({ ...message, id: "legacy-unsent-message", contactId: "legacy-unsent", token: "dropme", recipientName: "Guest", recipientPhone: "", rsvp: "", status: "READY", sentAt: "", providerMessageId: "" });
+state.campaign.messages.push({ ...message, id: "legacy-unsent-message", contactId: "legacy-unsent", token: "dropme", recipientName: "Guest", recipientPhone: "", recipientSnapshotAt: "", rsvp: "", status: "READY", sentAt: "", providerMessageId: "" });
 assert.equal(pruneUnsavedGuestInvitations(state), true);
 assert.equal(state.campaign.messages.some((item) => item.token === "dropme"), false);
 

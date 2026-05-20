@@ -1,4 +1,4 @@
-import { ensureInvitationMessage } from "@/lib/domain";
+import { ensureInvitationMessage, repairLegacyInvitations } from "@/lib/domain";
 import { loadState, saveStateStrict } from "@/lib/store";
 
 export const runtime = "nodejs";
@@ -8,6 +8,7 @@ export async function GET(request: Request, context: { params: Promise<{ token: 
   const { token } = await context.params;
   const state = await loadState({ fresh: true });
   const hadMessage = state.campaign.messages.some((item) => item.token === token);
+  const repaired = repairLegacyInvitations(state);
   const message = ensureInvitationMessage(state, token);
 
   if (!message) {
@@ -16,7 +17,7 @@ export async function GET(request: Request, context: { params: Promise<{ token: 
       headers: { "Content-Type": "text/html; charset=utf-8" },
     });
   }
-  if (!hadMessage) await saveStateStrict(state);
+  if (!hadMessage || repaired) await saveStateStrict(state);
 
   const contact = state.campaign.contacts.find((item) => item.id === message.contactId);
   const guestName = contact?.name || "Guest";

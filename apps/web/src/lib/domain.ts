@@ -212,17 +212,10 @@ export function ensureInvitationMessage(state: AppState, token: string) {
   if (existing) return existing;
   if (!validInvitationToken(token)) return null;
 
-  const contactId = `legacy-${token}`;
-  const contact = {
-    id: contactId,
-    name: "Guest",
-    phone: "",
-    sourceTab: "legacy-link",
-    fields: { legacyToken: token },
-  };
+  const contact = nextLegacyContact(state, token);
   const message: Message = {
     id: crypto.randomUUID(),
-    contactId,
+    contactId: contact.id,
     token,
     body: renderBody(activeTemplate(state), contact, token),
     status: "READY",
@@ -236,4 +229,46 @@ export function ensureInvitationMessage(state: AppState, token: string) {
   state.campaign.messages.push(message);
   state.campaign.updatedAt = nowIso();
   return message;
+}
+
+export function repairLegacyInvitations(state: AppState) {
+  let changed = false;
+  for (const message of state.campaign.messages) {
+    const contact = state.campaign.contacts.find((item) => item.id === message.contactId);
+    if (!contact || contact.sourceTab !== "legacy-link" || contact.name !== "Guest") continue;
+    const replacement = nextLegacyContact(state, message.token);
+    if (replacement.id === message.contactId) continue;
+    message.contactId = replacement.id;
+    message.body = renderBody(activeTemplate(state), replacement, message.token);
+    changed = true;
+  }
+  if (changed) state.campaign.updatedAt = nowIso();
+  return changed;
+}
+
+function nextLegacyContact(state: AppState, token: string): Contact {
+  const realContacts = state.campaign.contacts.filter((contact) => contact.sourceTab !== "legacy-link");
+  const seenPrimary = new Set<string>();
+  const usedRealContactIds = new Set<string>();
+  for (const message of state.campaign.messages) {
+    if (message.token === token) continue;
+    if (!realContacts.some((contact) => contact.id === message.contactId)) continue;
+    if (!seenPrimary.has(message.contactId)) {
+      seenPrimary.add(message.contactId);
+      continue;
+    }
+    usedRealContactIds.add(message.contactId);
+  }
+  const reusable = realContacts.find((contact) => !usedRealContactIds.has(contact.id));
+  if (reusable) return reusable;
+
+  const contact = {
+    id: `legacy-${token}`,
+    name: "Guest",
+    phone: "",
+    sourceTab: "legacy-link",
+    fields: { legacyToken: token },
+  };
+  state.campaign.contacts.push(contact);
+  return contact;
 }

@@ -1,4 +1,4 @@
-import { ensureInvitationMessage, setRsvp } from "@/lib/domain";
+import { ensureInvitationMessage, repairLegacyInvitations, setRsvp } from "@/lib/domain";
 import { loadState, saveStateStrict } from "@/lib/store";
 import type { RsvpResponse } from "@/lib/types";
 
@@ -19,6 +19,7 @@ export async function POST(request: Request) {
     }
 
     const state = await loadState({ fresh: true });
+    repairLegacyInvitations(state);
     const message = ensureInvitationMessage(state, token);
     if (!message) return Response.json({ error: "Invalid token." }, { status: 404 });
 

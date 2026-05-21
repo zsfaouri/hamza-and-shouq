@@ -66,11 +66,11 @@ const state = {
 assert.equal(setRsvp(state, "token-1", "YES"), true);
 assert.equal(state.campaign.messages[0].rsvp, "YES");
 assert.equal(setRsvp(state, "bad", "NO"), false);
-const legacy = ensureInvitationMessage(state, "JybYzueR");
-assert.equal(legacy?.token, "JybYzueR");
-assert.equal(legacy?.contactId, "legacy-JybYzueR");
-assert.equal(setRsvp(state, "JybYzueR", "NO"), true);
-assert.equal(state.campaign.messages.find((item) => item.token === "JybYzueR")?.rsvp, "NO");
+const legacy = ensureInvitationMessage(state, "unknownToken1");
+assert.equal(legacy?.token, "unknownToken1");
+assert.equal(legacy?.contactId, "legacy-unknownToken1");
+assert.equal(setRsvp(state, "unknownToken1", "NO"), true);
+assert.equal(state.campaign.messages.find((item) => item.token === "unknownToken1")?.rsvp, "NO");
 assert.equal(ensureInvitationMessage(state, "../bad"), null);
 state.campaign.contacts.push({ id: "legacy-old", name: "Guest", phone: "", sourceTab: "legacy-link", fields: { legacyToken: "oldToken" } });
 state.campaign.contacts.push({ id: "c2", name: "Maha", phone: "962790000001", sourceTab: "Test", fields: { legacyToken: "oldToken" } });
@@ -145,6 +145,9 @@ assert.equal(normalizeJordanPhone("07 90344602"), "790344602");
 assert.equal(normalizeJordanPhone("+962 7 9034 4602"), "790344602");
 assert.equal(findLegacyRecipientByPhone("+962 7 9034 4602")?.name, "السيد حسام التكروري و عقيلته");
 assert.equal(findLegacyRecipientByToken("DWvMGRZ8")?.name, "عطوفة اكثم المجالي و عائلته");
+assert.equal(findLegacyRecipientByToken("JybYzueR")?.name, "السيد طلال المجالي و عقيلته");
+assert.equal(findLegacyRecipientByToken("p4M8nMun")?.name, "السيد عمرو الصغير و عقيلته");
+assert.equal(findLegacyRecipientByToken("aNyY7wEs")?.name, "السيد حسام المجالي و عائلته");
 assert.equal(findLegacyRecipientByPhone("0799999999"), null);
 assert.equal(legacyRecipientContact({ name: "Guest A", phone: "0790344602" }, "tok1").phone, "962790344602");
 

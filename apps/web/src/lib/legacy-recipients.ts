@@ -18,7 +18,7 @@ export const legacyRecipients: LegacyRecipient[] = [
   { name: "الاستاذ محمد المجالي و عائلته", phone: "795309749", token: "nYnEVSxT" },
   { name: "الدكتور مراد ابو جابر و عقيلته", phone: "796906642", token: "pkyxVCny" },
   { name: "السيد عدي المجالي و عقيلته", phone: "790454020", token: "GCwnTBfg" },
-  { name: "السيد حسام المجالي و عائلته", phone: "795363811" },
+  { name: "السيد حسام المجالي و عائلته", phone: "795363811", token: "aNyY7wEs" },
   { name: "السيد محمود المجالي و عقيلته", phone: "799815053", token: "Z8f7zeaY" },
   { name: "السيد محمد عبدالرحيم المجالي وعقيلته", phone: "797370407", token: "Me7SNRsj" },
   { name: "السيد فيصل المجالي و عقيلته", phone: "799627661", token: "nHCbnGqG" },
@@ -33,7 +33,7 @@ export const legacyRecipients: LegacyRecipient[] = [
   { name: "الاستاذ عبدالله المجالي و عقيلته", phone: "795180699", token: "wajmKKGK" },
   { name: "حرم المرحوم عبد المهدي المجالي", phone: "791366418", token: "fEr3SCvr" },
   { name: "السيد حاكم المجالي و عائلته", phone: "799867390", token: "gX5ng8hB" },
-  { name: "السيد عمرو الصغير و عقيلته", phone: "799418947" },
+  { name: "السيد عمرو الصغير و عقيلته", phone: "799418947", token: "p4M8nMun" },
   { name: "السيد ناظم المجالي و عائلته", phone: "795506239", token: "NV3nTxJY" },
   { name: "السيد حسام التكروري و عقيلته", phone: "0790344602", token: "j4VPnW2p" },
   { name: "السيد عاطف المجالي و عائلته", phone: "795784971", token: "jjBBbFx3" },
@@ -56,7 +56,7 @@ export const legacyRecipients: LegacyRecipient[] = [
   { name: "السيد عيسى المجالي و عقيلته", phone: "795610999", token: "VB9hB5JQ" },
   { name: "الانسة نهى مصلح المجالي", phone: "796115137" },
   { name: "حرم المرحوم سالم المجالي", phone: "796966607", token: "2kTsFA42" },
-  { name: "السيد طلال المجالي و عقيلته", phone: "799402402" },
+  { name: "السيد طلال المجالي و عقيلته", phone: "799402402", token: "JybYzueR" },
   { name: "سعادة السيد عامر الكايد و عقيلته", phone: "", token: "aVqryfxc" },
 ];
 

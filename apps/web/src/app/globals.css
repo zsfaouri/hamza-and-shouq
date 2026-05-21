@@ -942,11 +942,19 @@ tr:hover td {
   .content {
     width: min(100% - 32px, 720px);
     grid-template-columns: 1fr;
-    padding-top: 56px;
+    padding-top: 32px;
   }
 
   .status-rail {
     position: static;
+  }
+
+  .topbar-chip {
+    display: none;
+  }
+
+  .topbar-actions .avatar {
+    display: none;
   }
 
   .rsvp-metrics {
@@ -956,62 +964,111 @@ tr:hover td {
 
 @media (max-width: 640px) {
   .topbar {
-    height: 78px;
-    padding: 0 28px;
+    height: 56px;
+    padding: 0 16px;
+    gap: 8px;
+  }
+
+  .brand-row {
+    gap: 10px;
+  }
+
+  .brand-row .icon-btn {
+    display: none;
   }
 
   .brand h1 {
-    font-size: 27px;
+    font-size: 18px;
+    letter-spacing: -0.02em;
   }
 
-  .topbar-actions .btn,
-  .topbar-chip:nth-child(2),
-  .topbar-actions .icon-only:nth-child(2) {
+  .topbar-actions {
+    gap: 10px;
+  }
+
+  .topbar-chip,
+  .topbar-actions .avatar {
     display: none;
+  }
+
+  .topbar-actions .btn {
+    font-size: 12px;
+    padding: 6px 14px;
+    min-height: 32px;
+    border-radius: 8px;
   }
 
   .content {
     width: 100%;
-    padding: 98px 30px 104px;
+    padding: 24px 16px 80px;
   }
 
   .status-rail {
     grid-template-columns: 1fr 1fr;
-    gap: 32px 30px;
+    gap: 12px;
   }
 
   .dashboard-intro {
-    margin-bottom: 18px;
+    grid-column: 1 / -1;
+    margin-bottom: 4px;
   }
 
   .dashboard-intro h2 {
-    font-size: 40px;
+    font-size: 24px;
+  }
+
+  .dashboard-intro p {
+    font-size: 13px;
   }
 
   .stat {
-    min-height: 146px;
-    padding: 32px 30px;
+    min-height: 100px;
+    padding: 16px;
+    border-radius: 12px;
+  }
+
+  .stat span {
+    font-size: 9px;
   }
 
   .stat strong {
-    font-size: 48px;
+    font-size: 32px;
+  }
+
+  .stat small {
+    font-size: 11px;
   }
 
   .capacity-card {
-    padding: 52px 34px;
+    grid-column: 1 / -1;
+    padding: 20px;
+  }
+
+  .capacity-ring svg {
+    width: 80px;
+    height: 80px;
   }
 
   .workspace {
-    gap: 24px;
+    gap: 16px;
   }
 
   .panel {
-    padding: 28px;
+    padding: 20px 16px;
+    border-radius: 14px;
+  }
+
+  .section-heading h2 {
+    font-size: 18px;
+  }
+
+  .section-heading p {
+    font-size: 13px;
   }
 
   .step-line {
-    margin-bottom: 60px;
-    box-shadow: 170px 0 0 #f0f0f0, 340px 0 0 #f0f0f0;
+    margin-bottom: 40px;
+    box-shadow: 120px 0 0 #f0f0f0, 240px 0 0 #f0f0f0;
   }
 
   .template-switcher {
@@ -1023,6 +1080,12 @@ tr:hover td {
   }
 
   .rsvp-metric {
-    min-height: 86px;
+    min-height: 70px;
+    padding: 14px;
+  }
+
+  .notice {
+    font-size: 12px;
+    padding: 10px 14px;
   }
 }

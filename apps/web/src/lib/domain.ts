@@ -251,18 +251,19 @@ export function ensureInvitationMessage(state: AppState, token: string) {
 
   const contact = nextLegacyContact(state, token);
   const verified = contact.sourceTab === "legacy-recovery";
+  const createdAt = nowIso();
   const message: Message = {
     id: crypto.randomUUID(),
     contactId: contact.id,
     recipientName: contact.name,
     recipientPhone: contact.phone,
-    recipientSnapshotAt: verified ? nowIso() : "",
+    recipientSnapshotAt: verified ? createdAt : "",
     token,
     body: renderBody(activeTemplate(state), contact, token),
-    status: "READY",
+    status: verified ? "SENT" : "READY",
     providerMessageId: "",
     error: "",
-    sentAt: "",
+    sentAt: verified ? createdAt : "",
     rsvp: "",
     rsvpAt: "",
   };
@@ -281,6 +282,8 @@ export function repairLegacyInvitations(state: AppState) {
       upsertLegacyContact(state, recoveredContact);
       message.contactId = recoveredContact.id;
       stampRecipientSnapshot(state, message, recoveredContact);
+      if (message.status === "READY") message.status = "SENT";
+      message.sentAt ||= message.recipientSnapshotAt;
       changed = true;
       continue;
     }

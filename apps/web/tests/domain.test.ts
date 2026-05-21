@@ -155,5 +155,7 @@ const recoveredState = defaultState();
 const recoveredMessage = ensureInvitationMessage(recoveredState, "fjDZh3dq");
 assert.equal(recoveredMessage?.recipientName, "المهندس أنس الذنبيات و عقيلته");
 assert.ok(recoveredMessage?.recipientSnapshotAt);
+assert.equal(recoveredMessage?.status, "SENT");
+assert.ok(recoveredMessage?.sentAt);
 
 console.log("domain tests passed");

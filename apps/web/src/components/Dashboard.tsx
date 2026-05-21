@@ -13,6 +13,7 @@ type StorageStatus = {
   error: string;
   keyKind?: string;
 };
+type RsvpFilter = "ALL" | "YES" | "NO" | "PENDING";
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -40,6 +41,7 @@ export default function Dashboard() {
   const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set());
   const [whatsAppStatus, setWhatsAppStatus] = useState<WhatsAppStatus | null>(null);
   const [storageStatus, setStorageStatus] = useState<StorageStatus | null>(null);
+  const [rsvpFilter, setRsvpFilter] = useState<RsvpFilter>("ALL");
 
   async function refresh() {
     const data = await api<PublicState>("/api/state");
@@ -248,6 +250,56 @@ export default function Dashboard() {
     } finally {
       setBusy("");
     }
+  }
+
+  function rsvpRows(filter: RsvpFilter = rsvpFilter) {
+    if (!state) return [];
+    return state.campaign.messages.map((message) => {
+      const contact = state.campaign.contacts.find((item) => item.id === message.contactId);
+      const rsvp = message.rsvp || "PENDING";
+      return {
+        id: message.id,
+        name: message.recipientName || contact?.name || "",
+        phone: message.recipientPhone || contact?.phone || "",
+        sourceTab: contact?.sourceTab || "",
+        sentStatus: message.status,
+        sentAt: message.sentAt || "",
+        rsvp,
+        rsvpAt: message.rsvpAt || "",
+        token: message.token,
+      };
+    }).filter((row) => filter === "ALL" || row.rsvp === filter);
+  }
+
+  function exportRsvp(filter: RsvpFilter = rsvpFilter) {
+    const rows = rsvpRows(filter);
+    const headers = ["Name", "Phone", "RSVP", "RSVP At", "Send Status", "Sent At", "Source", "Token", "Link"];
+    const escapeCsv = (value: string) => `"${value.replace(/"/g, '""')}"`;
+    const csv = [
+      headers.map(escapeCsv).join(","),
+      ...rows.map((row) => [
+        row.name,
+        row.phone,
+        row.rsvp === "YES" ? "Attending" : row.rsvp === "NO" ? "Not attending" : "Pending",
+        row.rsvpAt,
+        row.sentStatus,
+        row.sentAt,
+        row.sourceTab,
+        row.token,
+        `${window.location.origin}?t=${encodeURIComponent(row.token)}`,
+      ].map(escapeCsv).join(",")),
+    ].join("\r\n");
+    const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const suffix = filter.toLowerCase();
+    link.href = url;
+    link.download = `hamza-shouq-rsvp-${suffix}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    show(`Exported ${rows.length} RSVP row${rows.length === 1 ? "" : "s"}.`);
   }
 
   async function checkWhatsAppStatus() {
@@ -625,6 +677,66 @@ export default function Dashboard() {
                 </div>
               </div>
             )}
+          </div>
+
+          <div className="panel panel-rsvp">
+            <div className="section-heading compact">
+              <div>
+                <h2>RSVP Lists</h2>
+                <p>Separate guest response tracking from message send status.</p>
+              </div>
+              <button className="btn primary" type="button" onClick={() => exportRsvp(rsvpFilter)}>Export Current View</button>
+            </div>
+            <div className="rsvp-metrics">
+              <button className={`rsvp-metric ${rsvpFilter === "ALL" ? "active" : ""}`} type="button" onClick={() => setRsvpFilter("ALL")}>
+                <span>Total</span><strong>{state.campaign.messages.length}</strong>
+              </button>
+              <button className={`rsvp-metric yes ${rsvpFilter === "YES" ? "active" : ""}`} type="button" onClick={() => setRsvpFilter("YES")}>
+                <span>Attending</span><strong>{stats.yes}</strong>
+              </button>
+              <button className={`rsvp-metric no ${rsvpFilter === "NO" ? "active" : ""}`} type="button" onClick={() => setRsvpFilter("NO")}>
+                <span>Not Attending</span><strong>{stats.no}</strong>
+              </button>
+              <button className={`rsvp-metric pending ${rsvpFilter === "PENDING" ? "active" : ""}`} type="button" onClick={() => setRsvpFilter("PENDING")}>
+                <span>No Response</span><strong>{stats.pending}</strong>
+              </button>
+            </div>
+            <div className="rsvp-actions">
+              <button className="btn" type="button" onClick={() => exportRsvp("YES")}>Export Attending</button>
+              <button className="btn" type="button" onClick={() => exportRsvp("NO")}>Export Not Attending</button>
+              <button className="btn" type="button" onClick={() => exportRsvp("PENDING")}>Export No Response</button>
+              <button className="btn" type="button" onClick={() => { void refresh(); }}>Refresh Responses</button>
+            </div>
+            <div className="table-wrap rsvp-table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Recipient</th>
+                    <th>Phone</th>
+                    <th>Response</th>
+                    <th>Response Time</th>
+                    <th>Sent</th>
+                    <th>Link</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rsvpRows().map((row) => (
+                    <tr key={row.id}>
+                      <td dir="auto"><strong>{row.name || "Guest"}</strong><small className="table-sub">{row.sourceTab}</small></td>
+                      <td dir="ltr">{row.phone}</td>
+                      <td>
+                        <span className={`rsvp-status ${row.rsvp === "YES" ? "yes" : row.rsvp === "NO" ? "no" : "pending"}`}>
+                          {row.rsvp === "YES" ? "Attending" : row.rsvp === "NO" ? "Not attending" : "No response"}
+                        </span>
+                      </td>
+                      <td>{row.rsvpAt ? new Date(row.rsvpAt).toLocaleString() : "-"}</td>
+                      <td><span className={`pill ${row.sentStatus === "SENT" ? "yes" : row.sentStatus === "FAILED" ? "warn" : ""}`}>{row.sentStatus}</span></td>
+                      <td><a className="table-link" href={`/?t=${encodeURIComponent(row.token)}`} target="_blank" rel="noopener noreferrer">Open</a></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           <div className="panel panel-messages">

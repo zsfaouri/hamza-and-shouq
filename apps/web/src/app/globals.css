@@ -281,6 +281,114 @@ button {
   color: var(--primary);
 }
 
+.panel-rsvp {
+  border-color: rgba(0, 173, 239, 0.24);
+  background: linear-gradient(180deg, #ffffff 0%, #f8fdff 100%);
+}
+
+.rsvp-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.rsvp-metric {
+  min-height: 104px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  color: var(--ink);
+  padding: 18px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.rsvp-metric span {
+  display: block;
+  color: #747474;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.rsvp-metric strong {
+  display: block;
+  margin-top: 18px;
+  font-size: 36px;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.rsvp-metric.active {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary), 0 18px 34px rgba(0, 173, 239, 0.1);
+}
+
+.rsvp-metric.yes strong {
+  color: var(--green);
+}
+
+.rsvp-metric.no strong {
+  color: var(--red);
+}
+
+.rsvp-metric.pending strong {
+  color: var(--amber);
+}
+
+.rsvp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.rsvp-table-wrap {
+  max-height: 520px;
+}
+
+.rsvp-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  border-radius: 999px;
+  padding: 6px 11px;
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.rsvp-status.yes {
+  background: #ecfdf3;
+  color: #067647;
+}
+
+.rsvp-status.no {
+  background: #fff1f2;
+  color: #be123c;
+}
+
+.rsvp-status.pending {
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.table-sub {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.table-link {
+  color: var(--primary);
+  font-weight: 900;
+  text-decoration: none;
+}
+
 .capacity-card {
   grid-column: 1 / -1;
   padding: 52px;
@@ -840,6 +948,10 @@ tr:hover td {
   .status-rail {
     position: static;
   }
+
+  .rsvp-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 640px) {
@@ -904,5 +1016,13 @@ tr:hover td {
 
   .template-switcher {
     grid-template-columns: 1fr;
+  }
+
+  .rsvp-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .rsvp-metric {
+    min-height: 86px;
   }
 }

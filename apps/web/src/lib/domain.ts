@@ -1,5 +1,6 @@
 import type { AppState, Campaign, Contact, Message, RsvpResponse, Template } from "./types";
 import { findLegacyRecipientByToken, legacyRecipientContact } from "./legacy-recipients";
+import { findGeneratedVipRecipientByToken } from "./generated-vip-recipients";
 
 export function nowIso() {
   return new Date().toISOString();
@@ -223,7 +224,7 @@ export function rebuildMessages(campaign: Campaign, template: Template) {
   });
   for (const previous of previousMessages) {
     if (usedPreviousIds.has(previous.id)) continue;
-    if (!previous.sentAt && !previous.providerMessageId && !previous.rsvp && previous.status !== "SENT") continue;
+    if (!previous.recipientSnapshotAt && !previous.sentAt && !previous.providerMessageId && !previous.rsvp && previous.status !== "SENT") continue;
     nextMessages.push({
       ...previous,
       recipientName: previous.recipientName || "Guest",
@@ -250,7 +251,7 @@ export function ensureInvitationMessage(state: AppState, token: string) {
   if (!validInvitationToken(token)) return null;
 
   const contact = nextLegacyContact(state, token);
-  const verified = contact.sourceTab === "legacy-recovery";
+  const verified = contact.sourceTab === "legacy-recovery" || contact.sourceTab === "Link Generator Recovery";
   const createdAt = nowIso();
   const message: Message = {
     id: crypto.randomUUID(),
@@ -276,6 +277,15 @@ export function ensureInvitationMessage(state: AppState, token: string) {
 export function repairLegacyInvitations(state: AppState) {
   let changed = false;
   for (const message of state.campaign.messages) {
+    const generatedRecipient = findGeneratedVipRecipientByToken(message.token);
+    if (generatedRecipient && (!message.recipientSnapshotAt || message.recipientName === "Guest")) {
+      const recoveredContact = generatedVipContact(generatedRecipient);
+      upsertLegacyContact(state, recoveredContact);
+      message.contactId = recoveredContact.id;
+      stampRecipientSnapshot(state, message, recoveredContact);
+      changed = true;
+      continue;
+    }
     const recipient = findLegacyRecipientByToken(message.token);
     if (recipient && !message.recipientSnapshotAt) {
       const recoveredContact = legacyRecipientContact(recipient, message.token);
@@ -332,6 +342,12 @@ function exactLegacyContact(state: AppState, token: string) {
 function nextLegacyContact(state: AppState, token: string): Contact {
   const exact = exactLegacyContact(state, token);
   if (exact) return exact;
+  const generatedRecipient = findGeneratedVipRecipientByToken(token);
+  if (generatedRecipient) {
+    const contact = generatedVipContact(generatedRecipient);
+    upsertLegacyContact(state, contact);
+    return contact;
+  }
   const recovered = findLegacyRecipientByToken(token);
   if (recovered) {
     const contact = legacyRecipientContact(recovered, token);
@@ -353,6 +369,16 @@ function legacyGuestContact(token: string): Contact {
     phone: "",
     sourceTab: "legacy-link",
     fields: { legacyToken: token },
+  };
+}
+
+function generatedVipContact(recipient: { token: string; name: string; phone: string }): Contact {
+  return {
+    id: `generated-vip-${tokenSafe(recipient.token)}`,
+    name: recipient.name,
+    phone: recipient.phone,
+    sourceTab: "Link Generator Recovery",
+    fields: { generatedToken: recipient.token },
   };
 }
 

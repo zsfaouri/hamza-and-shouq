@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import { activeTemplate, createTemplate, defaultState, ensureInvitationMessage, imageDataUrl, pruneUnsavedGuestInvitations, rebuildMessages, renderBody, repairLegacyInvitations, setActiveTemplate, setRsvp, stampRecipientSnapshot, upsertTemplate } from "../src/lib/domain";
-import { findLegacyRecipientByPhone, findLegacyRecipientByToken, legacyRecipientContact, normalizeJordanPhone } from "../src/lib/legacy-recipients";
+import { activeTemplate, createTemplate, defaultState, ensureInvitationMessage, imageDataUrl, pruneUnsavedGuestInvitations, rebuildMessages, renderBody, repairLegacyInvitations, setActiveTemplate, setRsvp, stampRecipientSnapshot, upsertTemplate, validInvitationToken } from "../src/lib/domain";
+import { allGeneratedVipRecipients } from "../src/lib/generated-vip-recipients";
+import { findLegacyRecipientByPhone, findLegacyRecipientByToken, legacyRecipientContact, legacyRecipients, normalizeJordanPhone } from "../src/lib/legacy-recipients";
 import type { AppState, Contact, Message, Template } from "../src/lib/types";
 
 const contact: Contact = {
@@ -89,6 +90,25 @@ state.campaign.contacts = [importedAgain];
 rebuildMessages(state.campaign, template);
 assert.equal(state.campaign.messages.find((item) => item.contactId === "new-contact-id")?.token, "token-1");
 assert.equal(state.campaign.messages.find((item) => item.contactId === "new-contact-id")?.recipientName, "Zein");
+const samePhoneState = defaultState();
+samePhoneState.campaign.contacts = [
+  { id: "same-phone-a", name: "Guest A", phone: "962790100200", sourceTab: "Manual", fields: {} },
+  { id: "same-phone-b", name: "Guest B", phone: "962790100200", sourceTab: "Manual", fields: {} },
+];
+samePhoneState.campaign.messages = [
+  { ...message, id: "same-phone-message-a", contactId: "same-phone-a", recipientName: "Guest A", recipientPhone: "962790100200", token: "samePhoneA" },
+  { ...message, id: "same-phone-message-b", contactId: "same-phone-b", recipientName: "Guest B", recipientPhone: "962790100200", token: "samePhoneB" },
+];
+rebuildMessages(samePhoneState.campaign, template);
+assert.equal(samePhoneState.campaign.messages.find((item) => item.contactId === "same-phone-a")?.token, "samePhoneA");
+assert.equal(samePhoneState.campaign.messages.find((item) => item.contactId === "same-phone-b")?.token, "samePhoneB");
+const vipOnlyState = defaultState();
+vipOnlyState.campaign.contacts = [{ id: "sheet-contact", name: "Sheet Guest", phone: "962790000111", sourceTab: "Import", fields: {} }];
+vipOnlyState.campaign.messages = [
+  { ...message, id: "vip-message", contactId: "vip-contact", recipientName: "VIP Guest", recipientPhone: "", recipientSnapshotAt: "2026-05-22T00:00:00.000Z", token: "vipToken", status: "READY", sentAt: "", providerMessageId: "" },
+];
+rebuildMessages(vipOnlyState.campaign, template);
+assert.equal(vipOnlyState.campaign.messages.some((item) => item.token === "vipToken" && item.recipientName === "VIP Guest"), true);
 state.campaign.messages[0].status = "SENT";
 state.campaign.messages[0].sentAt = new Date(0).toISOString();
 state.campaign.contacts = [];
@@ -157,5 +177,46 @@ assert.equal(recoveredMessage?.recipientName, "المهندس أنس الذنب�
 assert.ok(recoveredMessage?.recipientSnapshotAt);
 assert.equal(recoveredMessage?.status, "SENT");
 assert.ok(recoveredMessage?.sentAt);
+const generatedVipState = defaultState();
+const generatedVipMessage = ensureInvitationMessage(generatedVipState, "YRaWj8JT");
+assert.equal(generatedVipMessage?.recipientName, "معالي السيد نايف الفايز وعقيلته");
+assert.ok(generatedVipMessage?.recipientSnapshotAt);
+const missingGeneratedVipRecipients = [
+  { token: "MWQsmFQU", name: "معالي السيد نايف الفايز وعقيلته" },
+  { token: "FKEHRXQ", name: "طوفة الباشا سفيان المناصير وعقيلته" },
+  { token: "MSsmbPhV", name: "عطوفة الباشا امجد الشمايلة وعقيلته" },
+  { token: "RjM3b97w", name: "العم الكبير صبيح المصري" },
+  { token: "jGZPhZ3n", name: "سعادة الشيخ عمرو زيدان وعقيلته" },
+  { token: "Pye2wgwH", name: "عطوفة العميد مهند عطيوي وعقيلته" },
+];
+for (const recipient of missingGeneratedVipRecipients) {
+  const recoveryState = defaultState();
+  const recoveredVipMessage = ensureInvitationMessage(recoveryState, recipient.token);
+  assert.equal(recoveredVipMessage?.recipientName, recipient.name);
+  assert.notEqual(recoveredVipMessage?.recipientName, "Guest");
+  assert.ok(recoveredVipMessage?.recipientSnapshotAt);
+}
+const catalogTokens = new Map<string, string>();
+for (const recipient of legacyRecipients.filter((item) => item.token)) {
+  assert.ok(validInvitationToken(recipient.token || ""), `invalid legacy token: ${recipient.token}`);
+  assert.equal(catalogTokens.has(recipient.token || ""), false, `duplicate token: ${recipient.token}`);
+  catalogTokens.set(recipient.token || "", recipient.name);
+  const recoveryState = defaultState();
+  const recoveredLegacyMessage = ensureInvitationMessage(recoveryState, recipient.token || "");
+  assert.equal(recoveredLegacyMessage?.recipientName, recipient.name);
+  assert.notEqual(recoveredLegacyMessage?.recipientName, "Guest");
+  assert.ok(recoveredLegacyMessage?.recipientSnapshotAt);
+  assert.equal(recoveredLegacyMessage?.status, "SENT");
+}
+for (const recipient of allGeneratedVipRecipients()) {
+  assert.ok(validInvitationToken(recipient.token), `invalid generated VIP token: ${recipient.token}`);
+  assert.equal(catalogTokens.has(recipient.token), false, `duplicate token: ${recipient.token}`);
+  catalogTokens.set(recipient.token, recipient.name);
+  const recoveryState = defaultState();
+  const recoveredVipMessage = ensureInvitationMessage(recoveryState, recipient.token);
+  assert.equal(recoveredVipMessage?.recipientName, recipient.name);
+  assert.notEqual(recoveredVipMessage?.recipientName, "Guest");
+  assert.ok(recoveredVipMessage?.recipientSnapshotAt);
+}
 
 console.log("domain tests passed");

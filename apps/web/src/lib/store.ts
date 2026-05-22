@@ -1,9 +1,12 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { defaultState } from "./domain";
+import { localBackupDiagnostics, readLocalBackup, writeLocalBackup } from "./local-backup-db";
 import type { AppState } from "./types";
 
 const localFile = path.join(process.cwd(), ".data", "app-state.json");
+
+export { localBackupDiagnostics };
 
 function memoryRef() {
   return globalThis as typeof globalThis & { __hsState?: AppState };
@@ -32,6 +35,17 @@ function storageError(label: string, status: number, text: string) {
     return `${label} ${status}: missing public.hs_app_state table. Run docs/SUPABASE_SCHEMA.sql in Supabase. ${detail}`;
   }
   return `${label} ${status}: ${detail}`;
+}
+
+function localBackupEnabled() {
+  return !process.env.VERCEL || Boolean(process.env.LOCAL_BACKUP_DB_PATH);
+}
+
+async function writeLocalBackupIfEnabled(state: AppState, source = "saveState") {
+  if (!localBackupEnabled()) return false;
+  const backup = await writeLocalBackup(state, source);
+  if (!backup.ok) console.error(`[store] Local backup database write failed: ${backup.error}`);
+  return backup.ok;
 }
 
 function normalizeState(input: Partial<AppState> | null | undefined): AppState {
@@ -131,30 +145,42 @@ export async function loadState(options?: { fresh?: boolean }): Promise<AppState
     memoryRef().__hsState = state;
     return state;
   } catch {
-    const state = normalizeState(null);
-    memoryRef().__hsState = state;
-    return state;
+    const backup = await readLocalBackup();
+    if (backup) {
+      const state = normalizeState(backup);
+      memoryRef().__hsState = state;
+      return state;
+    }
   }
+
+  const state = normalizeState(null);
+  memoryRef().__hsState = state;
+  return state;
 }
 
 export async function saveState(state: AppState) {
+  const backupOk = await writeLocalBackupIfEnabled(state);
   const config = supabaseConfig();
   if (config) {
-    const response = await fetch(`${config.url}/rest/v1/hs_app_state?on_conflict=id`, {
-      method: "POST",
-      headers: {
-        ...supabaseHeaders(config.key, true),
-        Prefer: "resolution=merge-duplicates,return=minimal",
-      },
-      body: JSON.stringify({ id: "main", data: state, updated_at: new Date().toISOString() }),
-    });
-    if (response.ok) {
-      memoryRef().__hsState = state;
-      return true;
+    try {
+      const response = await fetch(`${config.url}/rest/v1/hs_app_state?on_conflict=id`, {
+        method: "POST",
+        headers: {
+          ...supabaseHeaders(config.key, true),
+          Prefer: "resolution=merge-duplicates,return=minimal",
+        },
+        body: JSON.stringify({ id: "main", data: state, updated_at: new Date().toISOString() }),
+      });
+      if (response.ok) {
+        memoryRef().__hsState = state;
+        return true;
+      }
+      const errorText = await response.text().catch(() => "");
+      const detail = storageError("saveState", response.status, errorText);
+      console.error(`[store] Supabase write failed: ${detail}`);
+    } catch (error) {
+      console.error(`[store] Supabase write connection failed:`, error instanceof Error ? error.message : error);
     }
-    const errorText = await response.text().catch(() => "");
-    const detail = storageError("saveState", response.status, errorText);
-    console.error(`[store] Supabase write failed: ${detail}`);
     if (process.env.VERCEL) {
       // Still cache in memory so current request chain works, but flag failure
       memoryRef().__hsState = state;
@@ -170,6 +196,10 @@ export async function saveState(state: AppState) {
   } catch (err) {
     if (process.env.VERCEL) throw new Error("Persistent storage is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.");
     console.error(`[store] Local file write failed:`, err);
+    if (backupOk) {
+      memoryRef().__hsState = state;
+      return true;
+    }
     memoryRef().__hsState = state;
     return false;
   }
@@ -207,22 +237,23 @@ export function publicState(state: AppState) {
 }
 
 export async function storageDiagnostics() {
+  const backup = await localBackupDiagnostics();
   const config = supabaseConfig();
   if (!config) {
     if (process.env.VERCEL) {
-      return { configured: false, selectOk: false, writeOk: false, error: "Supabase env is not configured. Vercel needs persistent storage." };
+      return { configured: false, selectOk: false, writeOk: false, error: "Supabase env is not configured. Vercel needs persistent storage.", backup };
     }
     try {
       await mkdir(path.dirname(localFile), { recursive: true });
       const state = await loadState();
       await writeFile(localFile, JSON.stringify(state, null, 2));
-      return { configured: true, keyKind: "local-file", selectOk: true, writeOk: true, error: "" };
+      return { configured: true, keyKind: "local-file", selectOk: true, writeOk: true, error: "", backup };
     } catch (error) {
-      return { configured: false, keyKind: "local-file", selectOk: false, writeOk: false, error: error instanceof Error ? error.message : "Local storage failed." };
+      return { configured: false, keyKind: "local-file", selectOk: false, writeOk: false, error: error instanceof Error ? error.message : "Local storage failed.", backup };
     }
   }
   const headers = supabaseHeaders(config.key);
-  const out = { configured: true, keyKind: config.key.startsWith("eyJ") ? "jwt" : "publishable-or-secret", selectOk: false, writeOk: false, error: "" };
+  const out = { configured: true, keyKind: config.key.startsWith("eyJ") ? "jwt" : "publishable-or-secret", selectOk: false, writeOk: false, error: "", backup };
   try {
     const select = await fetch(`${config.url}/rest/v1/hs_app_state?id=eq.main&select=id`, { headers, cache: "no-store" });
     out.selectOk = select.ok;

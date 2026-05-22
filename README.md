@@ -123,7 +123,10 @@ Local development writes to:
 
 ```text
 apps/web/.data/app-state.json
+apps/web/.data/local-backup.sqlite
 ```
+
+The SQLite backup mirrors the full app state on every local save and is used as a fallback if the JSON state file cannot be read. Override the backup file path with `LOCAL_BACKUP_DB_PATH`; keep more or fewer snapshots with `LOCAL_BACKUP_SNAPSHOTS`.
 
 For Vercel persistence, create `public.hs_app_state` using:
 

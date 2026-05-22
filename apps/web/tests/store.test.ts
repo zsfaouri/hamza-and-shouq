@@ -26,6 +26,35 @@ async function main() {
     assert.equal(state.templates.length, 1);
   });
 
+  await withTempEnv("local-backup-db", {
+    VERCEL: "",
+    SUPABASE_URL: "",
+    NEXT_PUBLIC_SUPABASE_URL: "",
+    SUPABASE_SERVICE_ROLE_KEY: "",
+    SUPABASE_SECRET_KEY: "",
+    SUPABASE_ANON_KEY: "",
+    SUPABASE_PUBLISHABLE_KEY: "",
+    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "",
+    LOCAL_BACKUP_DB_PATH: path.join(".data", "local-backup.sqlite"),
+  }, async (moduleUrl, tempDir) => {
+    const { loadState, localBackupDiagnostics, saveState } = await import(moduleUrl);
+    const state = await loadState();
+    state.campaign.name = "Local backup campaign";
+    state.campaign.contacts.push({ id: "backup-contact", name: "Backup Guest", phone: "962790000222", sourceTab: "Backup", fields: {} });
+
+    assert.equal(await saveState(state), true);
+    const backup = await localBackupDiagnostics();
+    assert.equal(backup.available, true);
+    assert.equal(backup.readOk, true);
+    assert.equal(backup.writeOk, true);
+    assert.equal(backup.hasState, true);
+
+    await rm(path.join(tempDir, ".data", "app-state.json"), { force: true });
+    const restored = await loadState({ fresh: true });
+    assert.equal(restored.campaign.name, "Local backup campaign");
+    assert.equal(restored.campaign.contacts.some((contact: { id: string }) => contact.id === "backup-contact"), true);
+  });
+
   await withTempEnv("broken-supabase-write", {
     VERCEL: "1",
     SUPABASE_URL: "https://supabase.example.test",
@@ -100,14 +129,14 @@ async function main() {
 async function withTempEnv(
   label: string,
   env: Record<string, string>,
-  run: (moduleUrl: string) => Promise<void>,
+  run: (moduleUrl: string, tempDir: string) => Promise<void>,
 ) {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "hs-store-"));
   try {
     process.chdir(tempDir);
     process.env = { ...originalEnv, ...env };
     const moduleUrl = `${pathToFileURL(path.join(originalCwd, "src/lib/store.ts")).href}?case=${label}-${Date.now()}`;
-    await run(moduleUrl);
+    await run(moduleUrl, tempDir);
   } finally {
     process.chdir(originalCwd);
     process.env = originalEnv;
